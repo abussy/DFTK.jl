@@ -89,3 +89,14 @@ for fun in (:model_atomic, :model_DFT, :model_LDA, :model_PBE, :model_SCAN)
              parsed.magnetic_moments, kwargs...)
     end
 end
+
+"""
+Test model: this model uses the SIRIUS library to perform the SCF
+"""
+function model_SIRIUS(lattice::AbstractMatrix,
+                      atoms::Vector{<:Element},
+                      positions::Vector{<:AbstractVector},
+                      functionals::AbstractVector)
+    terms = [SIRIUS(functionals)]
+    Model(lattice, atoms, positions; model_name="SIRIUS", terms)
+end

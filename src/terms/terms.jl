@@ -51,6 +51,7 @@ include("ewald.jl")
 include("psp_correction.jl")
 include("entropy.jl")
 include("pairwise.jl")
+include("sirius.jl")
 
 include("magnetic.jl")
 breaks_symmetries(::Magnetic) = true

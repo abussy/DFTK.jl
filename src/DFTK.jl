@@ -55,6 +55,7 @@ export ElementPsp
 export ElementCohenBergstresser
 export ElementCoulomb
 export ElementGaussian
+export ElementSirius
 export charge_nuclear
 export charge_ionic
 export atomic_symbol
@@ -106,6 +107,12 @@ export AtomicLocal
 export LocalNonlinearity
 export Hartree
 export Xc
+export SIRIUS
+export SiriusSCF
+export UpdateSiriusParams
+export GetSiriusForces
+export GetSiriusStress
+export FinalizeSirius
 export AtomicNonlocal
 export Ewald
 export PspCorrection
@@ -143,7 +150,7 @@ include("eigen/preconditioners.jl")
 include("eigen/diag.jl")
 
 export model_atomic
-export model_DFT, model_PBE, model_LDA, model_SCAN
+export model_DFT, model_PBE, model_LDA, model_SCAN, model_SIRIUS
 include("standard_models.jl")
 
 export KerkerMixing, KerkerDosMixing, SimpleMixing, DielectricMixing
