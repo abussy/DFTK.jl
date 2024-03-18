@@ -110,6 +110,7 @@ export Xc
 export SIRIUS
 export SiriusSCF
 export UpdateSiriusParams
+export GetSiriusEnergy
 export GetSiriusForces
 export GetSiriusStress
 export FinalizeSirius

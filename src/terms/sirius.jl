@@ -62,14 +62,13 @@ function (term::SIRIUS)(basis::PlaneWaveBasis{T}) where {T}
 
     #create a dictionary that we later dump into a JSON string 
     UpdateSiriusParams(term, "control", "processing_unit", "cpu") #TODO: get from basis.architecture
-    UpdateSiriusParams(term, "control", "verbosity", 1) #TODO: set to zero, and only show cool stuff
 
     #TODO: probably need to pass the method to the model when constructing it
     UpdateSiriusParams(term, "parameters", "electronic_structure_method", "pseudopotential")
     UpdateSiriusParams(term, "parameters", "xc_functionals", [String(func) for func in term.functionals])
     #TODO: need to exactly figure out the correspondance of these wrt to DFTK
     UpdateSiriusParams(term, "parameters", "gk_cutoff", basis.Ecut)
-    UpdateSiriusParams(term, "parameters", "pw_cutoff", 2*basis.Ecut)
+    UpdateSiriusParams(term, "parameters", "pw_cutoff", 4*basis.Ecut)
 
     UpdateSiriusParams(term, "unit_cell", "lattice_vectors", basis.model.lattice)
     UpdateSiriusParams(term, "unit_cell", "atom_files", 
@@ -148,6 +147,14 @@ function SiriusSCF(basis::PlaneWaveBasis{T}; density_tol=1.0e-6, energy_tol=1.0e
         if typeof(term) == TermSirius
             Sirius.find_ground_state(term.gs, true, true; density_tol, energy_tol, 
                                      iter_solver_tol, max_niter)
+        end
+    end
+end
+
+function GetSiriusEnergy(basis::PlaneWaveBasis{T}, label::String) where {T}
+    for term in basis.terms
+        if typeof(term) == TermSirius
+            return Sirius.get_energy(term.gs, label)
         end
     end
 end
