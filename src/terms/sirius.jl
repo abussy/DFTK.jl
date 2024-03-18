@@ -88,10 +88,15 @@ function (term::SIRIUS)(basis::PlaneWaveBasis{T}) where {T}
     Sirius.initialize_context(ctx)
 
     # Create the Kpoint set from the basis. TODO: We assume MonkhorstPack grid for now
+    #                                             maybe should parse KP coordinates and weights
     k_grid = Vector{Int32}(basis.kgrid.kgrid_size)
     k_shift = Vector{Int32}([0, 0, 0]) #TODO: figure out how shift works in both codes
     use_symmetry = basis.use_symmetries_for_kpoint_reduction
     kps = Sirius.create_kset_from_grid(ctx, k_grid, k_shift, use_symmetry)
+
+    UpdateSiriusParams(term, "parameters", "ngridk", k_grid)
+    UpdateSiriusParams(term, "parameters", "shiftk", k_shift)
+    UpdateSiriusParams(term, "parameters", "use_symmetry", use_symmetry)
 
     gs = Sirius.create_ground_state(kps)
 
@@ -141,12 +146,30 @@ function UpdateSiriusParams(model::Model, section::String, keyword::String, valu
     end
 end
 
+function PrintSiriusInput(model::Model; fname::String="dftk_sirius_input.json")
+    for term_type in model.term_types
+        if typeof(term_type) != SIRIUS continue end
+
+        open(fname,"w") do f
+            JSON.print(f, term_type.params, 4)
+        end
+    end
+end
+
 function SiriusSCF(basis::PlaneWaveBasis{T}; density_tol=1.0e-6, energy_tol=1.0e-6, 
-                   iter_solver_tol=1.0e-2, max_niter=100) where {T}
+                   iter_solver_tol=1.0e-2, max_niter=100, print_sirius_input=false) where {T}
     for term in basis.terms
         if typeof(term) == TermSirius
+            UpdateSiriusParams(basis.model, "parameters", "density_tol", density_tol)
+            UpdateSiriusParams(basis.model, "parameters", "energy_tol", energy_tol)
+            UpdateSiriusParams(basis.model, "parameters", "num_dft_iter", max_niter)
+
+            if print_sirius_input
+                PrintSiriusInput(basis.model)
+            end
+
             Sirius.find_ground_state(term.gs, true, true; density_tol, energy_tol, 
-                                     iter_solver_tol, max_niter)
+                                     iter_solver_tol, max_niter) 
         end
     end
 end
