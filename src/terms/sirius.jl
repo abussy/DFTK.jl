@@ -47,28 +47,35 @@ function (term::SIRIUS)(basis::PlaneWaveBasis{T}) where {T}
     #      Maybe we can try this by passing an initial density to SIRIUS and retrieve the 
     #      converged one? Or maybe by retrieving the wavfunction at the end of the SCF
 
-    #TODO: need to understand the parameter correspondance bwtween the 2 codes, such that the
-    #      same DFTK input using SIRIUS or not yields the same result
-
-    #TODO: need to print detailed output to json + return energy/forces/stress
-
-    #TODO: maybe we can translate temperature to smearing_width directly. And also make a check
-    #      on the DFTK smearing scheme, and pass the corresponding one to SIRIUS
-    #warn user in case some parameters passed to the model need to be actively passed to Sirius
-    if basis.model.temperature > 0.0
-        @warn("Temperature > 0 is not passed automatically to SIRIUS. Use the UpdateSiriusParams "*
-              "function to define the corresponding smearing parameters directly in SIRIUS.")
-    end
-
     #create a dictionary that we later dump into a JSON string 
     UpdateSiriusParams(term, "control", "processing_unit", "cpu") #TODO: get from basis.architecture
 
-    #TODO: probably need to pass the method to the model when constructing it
+    #TODO: probably need to pass the method to the model when constructing it (PAW, full-potential)
+    #TODO: also need to pass magnetism information there
     UpdateSiriusParams(term, "parameters", "electronic_structure_method", "pseudopotential")
     UpdateSiriusParams(term, "parameters", "xc_functionals", [String(func) for func in term.functionals])
-    #TODO: need to exactly figure out the correspondance of these wrt to DFTK
-    UpdateSiriusParams(term, "parameters", "gk_cutoff", basis.Ecut)
-    UpdateSiriusParams(term, "parameters", "pw_cutoff", 4*basis.Ecut)
+
+    #Smearing. Only some of it available in SIRIUS
+    smearing_type = typeof(basis.model.smearing)
+    UpdateSiriusParams(term, "parameters", "smearing_width", basis.model.temperature) 
+    if smearing_type == Smearing.None 
+        #Actually not implemented, we just use the tiniest smearing width
+        UpdateSiriusParams(term, "parameters", "smearing_width", 1.0e-16)
+    elseif smearing_type == Smearing.FermiDirac
+        UpdateSiriusParams(term, "parameters", "smearing", "fermi_dirac")
+    elseif smearing_type == Smearing.Gaussian
+        UpdateSiriusParams(term, "parameters", "smearing", "gaussian")
+    elseif smearing_type == Smearing.MarzariVanderbilt
+        UpdateSiriusParams(term, "parameters", "smearing", "cold")
+    else
+        @error("Smearing type $smearing_type not implemented in SIRIUS")
+    end
+
+
+    #Cutoffs work as follow: cutoff_dftk = 0.5*cutoff_qe = 0.5*cutoff_sirius^2
+    sirius_cutoff = sqrt(2*basis.Ecut)
+    UpdateSiriusParams(term, "parameters", "gk_cutoff", sirius_cutoff)
+    UpdateSiriusParams(term, "parameters", "pw_cutoff", 2*sirius_cutoff)
 
     UpdateSiriusParams(term, "unit_cell", "lattice_vectors", basis.model.lattice)
     UpdateSiriusParams(term, "unit_cell", "atom_files", 
@@ -87,16 +94,18 @@ function (term::SIRIUS)(basis::PlaneWaveBasis{T}) where {T}
     ctx = Sirius.create_context_from_json(basis.comm_kpts, param_json)
     Sirius.initialize_context(ctx)
 
-    # Create the Kpoint set from the basis. TODO: We assume MonkhorstPack grid for now
-    #                                             maybe should parse KP coordinates and weights
-    k_grid = Vector{Int32}(basis.kgrid.kgrid_size)
-    k_shift = Vector{Int32}([0, 0, 0]) #TODO: figure out how shift works in both codes
-    use_symmetry = basis.use_symmetries_for_kpoint_reduction
-    kps = Sirius.create_kset_from_grid(ctx, k_grid, k_shift, use_symmetry)
+    kps = Sirius.create_kset(ctx, length(basis.kweights_global), basis.kcoords_global, 
+                             basis.kweights_global)
 
-    UpdateSiriusParams(term, "parameters", "ngridk", k_grid)
-    UpdateSiriusParams(term, "parameters", "shiftk", k_shift)
-    UpdateSiriusParams(term, "parameters", "use_symmetry", use_symmetry)
+    if typeof(basis.kgrid) == MonkhorstPack
+        k_grid = Vector{Int32}(basis.kgrid.kgrid_size)
+        k_shift = Vector{Int32}([0, 0, 0]) #TODO: deal with the shifted case
+        use_symmetry = basis.use_symmetries_for_kpoint_reduction
+
+        UpdateSiriusParams(term, "parameters", "ngridk", k_grid)
+        UpdateSiriusParams(term, "parameters", "shiftk", k_shift)
+        UpdateSiriusParams(term, "parameters", "use_symmetry", use_symmetry)
+    end
 
     gs = Sirius.create_ground_state(kps)
 
@@ -165,6 +174,10 @@ function SiriusSCF(basis::PlaneWaveBasis{T}; density_tol=1.0e-6, energy_tol=1.0e
             UpdateSiriusParams(basis.model, "parameters", "num_dft_iter", max_niter)
 
             if print_sirius_input
+                if typeof(basis.kgrid) != MonkhorstPack
+                    @warn("Only Monkhorst-Pack k-meshes are possible in SIRIUS JSON input files."*
+                          "Please double check the k-mesh specifications in the printed SIRIUS input.")
+                end
                 PrintSiriusInput(basis.model)
             end
 

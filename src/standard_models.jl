@@ -96,7 +96,7 @@ Test model: this model uses the SIRIUS library to perform the SCF
 function model_SIRIUS(lattice::AbstractMatrix,
                       atoms::Vector{<:Element},
                       positions::Vector{<:AbstractVector},
-                      functionals::AbstractVector)
+                      functionals::AbstractVector; kwargs...)
     terms = [SIRIUS(functionals)]
-    Model(lattice, atoms, positions; model_name="SIRIUS", terms)
+    Model(lattice, atoms, positions; model_name="SIRIUS", terms, kwargs...)
 end
