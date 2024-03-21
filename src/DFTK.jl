@@ -109,10 +109,12 @@ export Hartree
 export Xc
 export SIRIUS
 export SiriusSCF
+export SiriusNlcg
 export UpdateSiriusParams
 export GetSiriusEnergy
 export GetSiriusForces
 export GetSiriusStress
+export PrintSiriusParams
 export FinalizeSirius
 export AtomicNonlocal
 export Ewald
