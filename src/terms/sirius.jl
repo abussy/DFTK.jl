@@ -11,17 +11,15 @@ TODO:  - We start by assuming serial calculations. Once this works, we paralleli
          stays on the GPU
 """
 
-include("../../../SIRIUS/julia_module/Sirius.jl") #TODO: cannot stay as an absolute path
-import .Sirius
-
 using JSON
+using SIRIUS
 
-struct SIRIUS
+struct Sirius
     functionals::AbstractVector
     params::AbstractDict
 end
 
-function SIRIUS(functionals::AbstractVector)
+function Sirius(functionals::AbstractVector)
     params = Dict()
     params["mixer"] = Dict()
     params["settings"] = Dict()
@@ -31,15 +29,15 @@ function SIRIUS(functionals::AbstractVector)
     params["nlcg"] = Dict()
     params["vcsqnm"] = Dict()
     params["hubbard"] = Dict()
-    SIRIUS(functionals, params)
+    Sirius(functionals, params)
 end
 
-function (term::SIRIUS)(basis::PlaneWaveBasis{T}) where {T}
+function (term::Sirius)(basis::PlaneWaveBasis{T}) where {T}
     #tmp, set SIRIUS library to local so that no need to rebuild package 
-    Sirius.libpath = ENV["LD_LIBRARY_PATH"]*"/libsirius.so" 
+    SIRIUS.libpath = ENV["LD_LIBRARY_PATH"]*"/libsirius.so" 
 
-    if !Sirius.is_initialized()
-        Sirius.initialize(false)
+    if !SIRIUS.is_initialized()
+        SIRIUS.initialize(false)
     end
 
     #TODO: need to figure out a way to exchange data between SIRIUS and DFTK, such as density,
@@ -50,8 +48,8 @@ function (term::SIRIUS)(basis::PlaneWaveBasis{T}) where {T}
     #create a dictionary that we later dump into a JSON string 
     UpdateSiriusParams(term, "control", "processing_unit", "cpu") #TODO: get from basis.architecture
 
+    #TODO: might want a stand-alone function that sets SIRIUS verbosity
     #TODO: probably need to pass the method to the model when constructing it (PAW, full-potential)
-    #TODO: also need to pass magnetism information there
     UpdateSiriusParams(term, "parameters", "electronic_structure_method", "pseudopotential")
     UpdateSiriusParams(term, "parameters", "xc_functionals", [String(func) for func in term.functionals])
 
@@ -91,11 +89,11 @@ function (term::SIRIUS)(basis::PlaneWaveBasis{T}) where {T}
     UpdateSiriusParams(term, "unit_cell", "atoms", atoms)
 
     param_json = JSON.json(term.params)
-    ctx = Sirius.create_context_from_json(basis.comm_kpts, param_json)
-    Sirius.initialize_context(ctx)
+    ctx = SIRIUS.create_context_from_json(basis.comm_kpts, param_json)
+    SIRIUS.initialize_context(ctx)
 
-    kps = Sirius.create_kset(ctx, length(basis.kweights_global), basis.kcoords_global, 
-                             basis.kweights_global)
+    kps = SIRIUS.create_kset(ctx; num_kp=length(basis.kweights_global), k_coords=basis.kcoords_global, 
+                             k_weights=basis.kweights_global)
 
     if typeof(basis.kgrid) == MonkhorstPack
         k_grid = Vector{Int32}(basis.kgrid.kgrid_size)
@@ -107,7 +105,7 @@ function (term::SIRIUS)(basis::PlaneWaveBasis{T}) where {T}
         UpdateSiriusParams(term, "parameters", "use_symmetry", use_symmetry)
     end
 
-    gs = Sirius.create_ground_state(kps)
+    gs = SIRIUS.create_ground_state(kps)
 
     TermSirius(ctx, kps, gs)
 end
@@ -115,17 +113,17 @@ end
 mutable struct TermSirius <: TermNonlinear
 
     # Sirius handlersgg
-    ctx::Sirius.ContextHandler
-    kps::Sirius.KpointSetHandler
-    gs::Sirius.GroundStateHandler
+    ctx::SIRIUS.ContextHandler
+    kps::SIRIUS.KpointSetHandler
+    gs::SIRIUS.GroundStateHandler
 end
 
 function FinalizeSirius(term::TermSirius)
-    Sirius.free_ground_state_handler(term.gs)
-    Sirius.free_kpoint_set_handler(term.kps)
-    Sirius.free_context_handler(term.ctx)
-    if Sirius.is_initialized()
-        Sirius.finalize(false)
+    SIRIUS.free_ground_state_handler(term.gs)
+    SIRIUS.free_kpoint_set_handler(term.kps)
+    SIRIUS.free_context_handler(term.ctx)
+    if SIRIUS.is_initialized()
+        SIRIUS.finalize(false)
     end
 end
 
@@ -153,7 +151,7 @@ function GetSiriusGs(basis::PlaneWaveBasis{T}) where {T}
     end
 end
 
-function UpdateSiriusParams(term_type::SIRIUS, section::String, keyword::String, value::Any)
+function UpdateSiriusParams(term_type::Sirius, section::String, keyword::String, value::Any)
     #Note: we assume only one level of nesting in Sirius input
     if !haskey(term_type.params, section) term_type.params[section] = Dict() end
     if haskey(term_type.params[section], keyword) 
@@ -167,7 +165,7 @@ end
 function UpdateSiriusParams(model::Model, section::String, keyword::String, value::Any)
     #update the ctx parameters
     for term_type in model.term_types
-        if typeof(term_type) == SIRIUS UpdateSiriusParams(term_type, section, keyword, value) end
+        if typeof(term_type) == Sirius UpdateSiriusParams(term_type, section, keyword, value) end
     end
 end
 
@@ -179,7 +177,7 @@ end
 
 function PrintSiriusParams(basis::PlaneWaveBasis{T}; fname::String="dftk_sirius_input.json") where {T}
     for term_type in basis.model.term_types
-        if typeof(term_type) != SIRIUS continue end
+        if typeof(term_type) != Sirius continue end
 
         if typeof(basis.kgrid) != MonkhorstPack
             @warn("Only Monkhorst-Pack k-meshes are available in SIRIUS JSON parameters files."*
@@ -194,7 +192,7 @@ end
 
 function GetSiriusParams(basis::PlaneWaveBasis{T}) where {T}
     for term_type in basis.model.term_types
-        if typeof(term_type) == SIRIUS return term_type.params end
+        if typeof(term_type) == Sirius return term_type.params end
     end
 end
 
@@ -206,7 +204,7 @@ function SiriusSCF(basis::PlaneWaveBasis{T}; density_tol=1.0e-6, energy_tol=1.0e
     UpdateSiriusParams(basis.model, "parameters", "num_dft_iter", max_niter)
 
     gs = GetSiriusGs(basis)
-    Sirius.find_ground_state(gs, true, true; density_tol, energy_tol, iter_solver_tol, max_niter) 
+    SIRIUS.find_ground_state(gs, true, true; density_tol, energy_tol, iter_solver_tol, max_niter) 
 end
 
 function SiriusNlcg(basis::PlaneWaveBasis{T}; kappa=0.3, tau=0.1, tol=1.0e-9, 
@@ -215,13 +213,7 @@ function SiriusNlcg(basis::PlaneWaveBasis{T}; kappa=0.3, tau=0.1, tol=1.0e-9,
     #get params that are already set
     params = GetSiriusParams(basis)
     temp = 315775.326864009*params["parameters"]["smearing_width"] #convert from Ha to K
-    if params["parameters"]["smearing"] == "fermi_dirac"
-        smearing = "FD"
-    elseif params["parameters"]["smearing"] == "gaussian_spline"
-        smearing = "GS"
-    else
-        @error("Smearing type not supported by nlcglib.")
-    end
+    smearing = params["parameters"]["smearing"]
     processing_unit = params["control"]["processing_unit"]
 
     #save new nlcg params
@@ -235,17 +227,17 @@ function SiriusNlcg(basis::PlaneWaveBasis{T}; kappa=0.3, tau=0.1, tol=1.0e-9,
 
     gs = GetSiriusGs(basis)
     kps = GetSiriusKps(basis)
-    Sirius.nlcg(gs, kps, temp, smearing, kappa, tau, tol, maxiter, restart, processing_unit)
+    SIRIUS.nlcg(gs, kps; temp, smearing, kappa, tau, tol, maxiter, restart, processing_unit)
 end
 
 function GetSiriusEnergy(basis::PlaneWaveBasis{T}, label::String) where {T}
-    return Sirius.get_energy(GetSiriusGs(basis), label)
+    return SIRIUS.get_energy(GetSiriusGs(basis), label)
 end
 
 function GetSiriusForces(basis::PlaneWaveBasis{T}, label::String) where {T}
-    return Sirius.get_forces(GetSiriusGs(basis), label)
+    return SIRIUS.get_forces(GetSiriusGs(basis), label)
 end
 
 function GetSiriusStress(basis::PlaneWaveBasis{T}, label::String) where {T}
-    return Sirius.get_stress_tensor(GetSiriusGs(basis), label)
+    return SIRIUS.get_stress_tensor(GetSiriusGs(basis), label)
 end

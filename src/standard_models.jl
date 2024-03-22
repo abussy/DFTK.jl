@@ -97,6 +97,6 @@ function model_SIRIUS(lattice::AbstractMatrix,
                       atoms::Vector{<:Element},
                       positions::Vector{<:AbstractVector},
                       functionals::AbstractVector; kwargs...)
-    terms = [SIRIUS(functionals)]
+    terms = [Sirius(functionals)]
     Model(lattice, atoms, positions; model_name="SIRIUS", terms, kwargs...)
 end

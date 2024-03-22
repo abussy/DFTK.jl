@@ -47,6 +47,7 @@ TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 UnitfulAtomic = "a7773ee8-282e-5fa2-be4e-bd808c38a91a"
 SIRIUS_jll = "6b659922-2939-5935-a7a2-1bdd48c7820f"
+SIRIUS = "3581e6f0-5a2a-4fbf-9499-336905df69aa"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 
 [weakdeps]

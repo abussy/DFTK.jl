@@ -107,7 +107,7 @@ export AtomicLocal
 export LocalNonlinearity
 export Hartree
 export Xc
-export SIRIUS
+export Sirius
 export SiriusSCF
 export SiriusNlcg
 export UpdateSiriusParams
