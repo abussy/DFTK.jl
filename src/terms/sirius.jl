@@ -1,14 +1,36 @@
 """
 Sirius term: for a potential coming from the SIRIUS library
-Notes: - this is work in progress
-       - for now, we get the full potential (Hartree + Vxc + etc) from Sirius
-       - the goal is to pass the density from DFTK to SIRIUS, and get the potential back
-       - this way we can use DFTK to deal with the SCF, preconditioning, etc, but get new features 
-         from sirius (ultrsoft PPs, full potential, etc.)
-TODO:  - We start by assuming serial calculations. Once this works, we parallelize over MPI. We want
-         to make sure that there is no communication there, i.e. that the k-point dist matches
-       - We start by doing CPU only. One this works, we can thing on how to exchange data that
-         stays on the GPU
+Notes: this is work in progress. For now, this allows to create a model very much like
+       the rest of DFTK, but with SIRIUS as the driver for the SCF. For example:
+
+        using DFTK                                                                                           
+        using MKL                                                                                            
+
+        a = 3.37                                                                                             
+        lattice = a * [[0 1 1.];                                                                             
+                       [1 0 1.];                                                                             
+                       [1 1 0.]]                                                                             
+        positions = [ones(3)/8, -ones(3)/8]                                                                  
+
+        #Potential file coming from SIRIUS' upf_to_json tool
+        C = ElementSirius(:C; fname=("./C_molsim.upf.json"))                                                 
+        atoms     = [C, C]                                                                                   
+        model = model_SIRIUS(lattice, atoms, positions, ["XC_GGA_X_PBE", "XC_GGA_C_PBE"];                    
+                             temperature=0.1, smearing=DFTK.Smearing.FermiDirac(),                           
+                             spin_polarization=:collinear)                                                   
+
+        UpdateSiriusParams(model, "control", "verbosity", 1)                                                 
+        basis = PlaneWaveBasis(model; Ecut=30, kgrid=[2, 2, 2])                                              
+
+        #initial SCF step for good NLCG guess
+        SiriusSCF(basis; density_tol=1.0e-8, energy_tol=1.0e-7, max_niter=4)                                 
+
+        #direct minimzation with NLCG
+        SiriusNlcg(basis)                                                                                    
+
+        @show energy = GetSiriusEnergy(basis, "total")
+        @show forces = GetSiriusForces(basis, "total")
+        @show stress = GetSiriusStress(basis, "total")
 """
 
 using JSON
@@ -42,8 +64,6 @@ function (term::Sirius)(basis::PlaneWaveBasis{T}) where {T}
 
     #TODO: need to figure out a way to exchange data between SIRIUS and DFTK, such as density,
     #      PW coeffs, etc. Ideally without MPI communication nor GPU to device intermediate
-    #      Maybe we can try this by passing an initial density to SIRIUS and retrieve the 
-    #      converged one? Or maybe by retrieving the wavfunction at the end of the SCF
 
     #create a dictionary that we later dump into a JSON string 
     UpdateSiriusParams(term, "control", "processing_unit", "cpu") #TODO: get from basis.architecture
