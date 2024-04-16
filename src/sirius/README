@@ -1,0 +1,22 @@
+The idea for the SIRIUS integration is the following:
+We want to overload the 2 main functions of the SCF cycle with SIRIUS calls.
+These functions are: 
+- energy_hamiltonian, which calculates the energy and updates the Hamiltonian
+  bassed on an input density/wave functions
+- next_density, which soles the eigenvalues problem and spits the new wave
+  functions, density, eigenvalues, etc.
+
+This should allow the user to run the SCF in the exact same way as DFTK in
+general, with the same mixing schemes and callback functions.
+
+Conceptually, all the numerical details are contained in the basis, and not
+the model. Therefore, we do not touch the model itsel, but we create a custom
+SiriusBasis. Note for the future: we probably want to keep a normal
+PlaneWaveBasis in our  SiriusBasis so that FFTs and other similar operations
+can take place on the DFTK side (e.g. for mixing). In the future, we might
+also divert those calls to SIRIUS.
+
+In DFTK, the density is simply an array on the real-space grid. We need to
+find a way to transfer that data to SIRIUS, such that it can be understood
+there too. Then, similar considerations have to be taken such that the
+transfer of wave function coefficients can be done as well.

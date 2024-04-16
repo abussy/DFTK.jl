@@ -201,7 +201,8 @@ function PlaneWaveBasis(model::Model{T}, Ecut::Real, fft_size::Tuple{Int, Int, I
                         variational::Bool, kgrid::AbstractKgrid,
                         symmetries_respect_rgrid::Bool,
                         use_symmetries_for_kpoint_reduction::Bool,
-                        comm_kpts, architecture::Arch
+                        comm_kpts, architecture::Arch,
+                        instantiate_terms::Bool
                        ) where {T <: Real, Arch <: AbstractArchitecture}
     # TODO This needs a refactor. There is too many different things here happening
     #      at once. In particular steps, which can become rather costly for larger
@@ -346,9 +347,11 @@ function PlaneWaveBasis(model::Model{T}, Ecut::Real, fft_size::Tuple{Int, Int, I
         use_symmetries_for_kpoint_reduction, terms)
 
     # Instantiate the terms with the basis
-    for (it, t) in enumerate(model.term_types)
-        term_name = string(nameof(typeof(t)))
-        @timing "Instantiation $term_name" basis.terms[it] = t(basis)
+    if instantiate_terms
+        for (it, t) in enumerate(model.term_types)
+            term_name = string(nameof(typeof(t)))
+            @timing "Instantiation $term_name" basis.terms[it] = t(basis)
+        end
     end
     basis
 end
@@ -368,7 +371,8 @@ with a maximal spacing of `2π * 0.022` per Bohr.
                                 variational=true, fft_size=nothing,
                                 symmetries_respect_rgrid=isnothing(fft_size),
                                 use_symmetries_for_kpoint_reduction=true,
-                                comm_kpts=MPI.COMM_WORLD, architecture=CPU()) where {T <: Real}
+                                comm_kpts=MPI.COMM_WORLD, architecture=CPU(),
+                                instantiate_terms=true) where {T <: Real}
     if isnothing(fft_size)
         @assert variational
         if symmetries_respect_rgrid
@@ -398,7 +402,7 @@ with a maximal spacing of `2π * 0.022` per Bohr.
 
     PlaneWaveBasis(model, austrip(Ecut), fft_size, variational, kgrid_inner,
                    symmetries_respect_rgrid, use_symmetries_for_kpoint_reduction,
-                   comm_kpts, architecture)
+                   comm_kpts, architecture, instantiate_terms)
 end
 
 """

@@ -222,3 +222,19 @@ end
 function local_potential_fourier(el::ElementGaussian, p::Real)
     -el.α * exp(- (p * el.L)^2 / 2)  # = ∫_ℝ³ V(x) exp(-ix⋅p) dx
 end
+
+struct ElementSirius <: Element
+    Z::Int         # Nuclear charge
+    symbol         # Element symbol
+    mass           # Atomic mass
+    fname          # Path to JSON PSP file
+end
+
+function ElementSirius(key; fname, mass=element(Symbol(periodic_table[key].symbol)).atomic_mass)
+    ElementSirius(periodic_table[key].number, Symbol(periodic_table[key].symbol), mass, fname)
+end
+
+charge_nuclear(el::ElementSirius) = el.Z
+fname(el::ElementSirius) = el.fname
+AtomsBase.atomic_symbol(el::ElementSirius) = el.symbol
+AtomsBase.atomic_mass(el::ElementSirius) = el.mass

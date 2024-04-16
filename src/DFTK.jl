@@ -56,6 +56,7 @@ export ElementPsp
 export ElementCohenBergstresser
 export ElementCoulomb
 export ElementGaussian
+export ElementSirius
 export charge_nuclear
 export charge_ionic
 export atomic_symbol
@@ -96,6 +97,15 @@ include("supercell.jl")
 
 export Energies
 include("Energies.jl")
+
+export SiriusBasis
+export SiriusSCF
+export SiriusNlcg
+export GetSiriusEnergy
+export GetSiriusForces
+export GetSiriusStress
+include("sirius/SiriusBasis.jl")
+include("sirius/SiriusBlackBox.jl")
 
 export Hamiltonian
 export HamiltonianBlock
