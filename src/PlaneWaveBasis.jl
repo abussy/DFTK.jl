@@ -368,7 +368,8 @@ with a maximal spacing of `2π * 0.022` per Bohr.
                                 variational=true, fft_size=nothing,
                                 symmetries_respect_rgrid=isnothing(fft_size),
                                 use_symmetries_for_kpoint_reduction=true,
-                                comm_kpts=MPI.COMM_WORLD, architecture=CPU()) where {T <: Real}
+                                comm_kpts=MPI.COMM_WORLD, architecture=CPU()
+                                ) where {T <: Real}
     if isnothing(fft_size)
         @assert variational
         if symmetries_respect_rgrid

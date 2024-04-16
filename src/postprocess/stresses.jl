@@ -14,23 +14,22 @@ See [O. Nielsen, R. Martin Phys. Rev. B. **32**, 3792 (1985)](https://doi.org/10
 for details. In Voigt notation one would use the vector
 ``[σ_{xx} σ_{yy} σ_{zz} σ_{zy} σ_{zx} σ_{yx}]``.
 """
-@timing function compute_stresses_cart(scfres)
+@timing function compute_stresses_cart(basis::PlaneWaveBasis, ψ, occupation, eigenvalues, εF)
     # compute the Hellmann-Feynman energy (with fixed ψ/occ/ρ)
     function HF_energy(lattice::AbstractMatrix{T}) where {T}
-        basis = scfres.basis
         new_model = Model(basis.model; lattice)
         new_basis = PlaneWaveBasis(new_model,
                                    basis.Ecut, basis.fft_size, basis.variational,
                                    basis.kgrid, basis.symmetries_respect_rgrid,
                                    basis.use_symmetries_for_kpoint_reduction,
                                    basis.comm_kpts, basis.architecture)
-        ρ = compute_density(new_basis, scfres.ψ, scfres.occupation)
-        (; energies) = energy(new_basis, scfres.ψ, scfres.occupation;
-                              ρ, scfres.eigenvalues, scfres.εF)
+        ρ = compute_density(new_basis, ψ, occupation)
+        (; energies) = energy(new_basis, ψ, occupation;
+                              ρ, eigenvalues, εF)
         energies.total
     end
-    L  = scfres.basis.model.lattice
-    Ω  = scfres.basis.model.unit_cell_volume
+    L  = basis.model.lattice
+    Ω  = basis.model.unit_cell_volume
 
     # Note that both strain and stress are symmetric, therefore we only do
     # AD with respect to the 6 free Voigt strain components. Note, that the
@@ -38,8 +37,14 @@ for details. In Voigt notation one would use the vector
     stress_voigt = 1/Ω * ForwardDiff.gradient(
         v -> HF_energy(voigt_strain_to_full(v) * L), zeros(eltype(L), 6)
     )::Vector{eltype(L)}
-    symmetrize_stresses(scfres.basis, voigt_stress_to_full(stress_voigt))
+    symmetrize_stresses(basis, voigt_stress_to_full(stress_voigt))
 end
+
+function compute_stresses_cart(scfres)
+    compute_stresses_cart(scfres.basis, scfres.ψ, scfres.occupation,
+                          scfres.eigenvalues, scfres.εF)
+end
+
 function voigt_stress_to_full(v::AbstractVector{T}) where {T}
     @SArray[v[1] v[6] v[5];
             v[6] v[2] v[4];

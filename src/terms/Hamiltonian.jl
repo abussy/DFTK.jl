@@ -76,7 +76,9 @@ Array(block::HamiltonianBlock)  = Matrix(block)
 Matrix(block::HamiltonianBlock) = sum(Matrix, block.operators)
 Matrix(block::GenericHamiltonianBlock) = sum(Matrix, block.optimized_operators)
 
-struct Hamiltonian
+abstract type AbstractHamiltonian end
+
+struct Hamiltonian <: AbstractHamiltonian
     basis::PlaneWaveBasis
     blocks::Vector{HamiltonianBlock}
 end

@@ -108,6 +108,8 @@ end
 charge_ionic(el::ElementPsp) = charge_ionic(el.psp)
 charge_nuclear(el::ElementPsp) = el.Z
 has_core_density(el::ElementPsp) = has_core_density(el.psp)
+get_path(el::ElementPsp) = get_path(el.psp)
+get_rcut(el::ElementPsp) = get_rcut(el.psp)
 AtomsBase.atomic_symbol(el::ElementPsp) = el.symbol
 AtomsBase.atomic_mass(el::ElementPsp) = el.mass
 
