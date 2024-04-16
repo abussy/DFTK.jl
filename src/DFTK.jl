@@ -66,6 +66,7 @@ export Smearing
 export Model
 export FFTGrid
 export MonkhorstPack, ExplicitKpoints
+export AbstractBasis
 export PlaneWaveBasis
 export compute_fft_size
 export G_vectors, G_vectors_cart, r_vectors, r_vectors_cart
@@ -147,7 +148,7 @@ export LDA, PBE, PBEsol, SCAN, r2SCAN
 include("standard_models.jl")
 
 export KerkerMixing, KerkerDosMixing, SimpleMixing, DielectricMixing
-export LdosMixing, HybridMixing, χ0Mixing
+export LdosMixing, HybridMixing, χ0Mixing, x0Model
 export FixedBands, AdaptiveBands
 export scf_damping_solver
 export scf_anderson_solver
@@ -192,10 +193,12 @@ include("pseudo/list_psp.jl")
 export atomic_system, periodic_system  # Reexport from AtomsBase
 export run_wannier90
 export DFTKCalculator
+export SiriusBasis
 include("external/atomsbase.jl")
 include("external/stubs.jl")  # Function stubs for conditionally defined methods
 include("external/wannier_shared.jl")
 include("external/DFTKCalculator.jl")
+include("external/sirius.jl")
 
 export compute_bands
 export plot_bandstructure

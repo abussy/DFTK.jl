@@ -55,6 +55,7 @@ struct PspUpf{T,I} <: NormConservingPsp
     ircut::Int           # Index of the radial cutoff.
     identifier::String   # String identifying the pseudopotential.
     description::String  # Descriptive string. UPF: `comment`
+    path::String         # Path to UPF file
 end
 
 """
@@ -149,13 +150,15 @@ function PspUpf(path; identifier=path, rcut=nothing)
         vloc, r2_projs, h, r2_pswfcs, pswfc_occs, pswfc_energies, pswfc_labels,
         r2_ρion, r2_ρcore,
         vloc_interp, r2_projs_interp, r2_ρion_interp, r2_ρcore_interp,
-        rcut, ircut, identifier, description
+        rcut, ircut, identifier, description, path
     )
 end
 
 charge_ionic(psp::PspUpf) = psp.Zion
 has_valence_density(psp::PspUpf) = !all(iszero, psp.r2_ρion)
 has_core_density(psp::PspUpf) = !all(iszero, psp.r2_ρcore)
+get_path(psp::PspUpf) = psp.path
+get_rcut(psp::PspUpf) = psp.rcut
 
 function eval_psp_projector_real(psp::PspUpf, i, l, r::T)::T where {T<:Real}
     psp.r2_projs_interp[l+1][i](r) / r^2  # TODO if r is below a threshold, return zero

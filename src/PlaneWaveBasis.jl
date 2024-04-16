@@ -284,7 +284,8 @@ Note, this disables certain symmetry features.
                                 variational=true, fft_size=nothing,
                                 symmetries_respect_rgrid=isnothing(fft_size),
                                 use_symmetries_for_kpoint_reduction=true,
-                                comm_kpts=MPI.COMM_WORLD, architecture=CPU()) where {T <: Real}
+                                comm_kpts=MPI.COMM_WORLD, architecture=CPU()
+                                ) where {T <: Real}
     if isnothing(fft_size)
         @assert variational
         # TODO Move this to compute_fft_size ?

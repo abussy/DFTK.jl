@@ -11,7 +11,7 @@ All kwargs not specified below are passed to [`diagonalize_all_kblocks`](@ref):
   for SCF computations. Increase if higher accuracy desired.
 - `eigensolver`: The diagonalisation method to be employed.
 """
-@timing function compute_bands(basis::PlaneWaveBasis, kgrid::AbstractKgrid;
+@timing function compute_bands(basis::AbstractBasis, kgrid::AbstractKgrid;
                                n_bands=default_n_bands_bandstructure(basis.model),
                                n_extra=3, ρ=nothing, τ=nothing, εF=nothing,
                                eigensolver=lobpcg_hyper, tol=1e-3, kwargs...)
@@ -30,8 +30,8 @@ All kwargs not specified below are passed to [`diagonalize_all_kblocks`](@ref):
               "compute_bands(scfres) function.")
     end
 
-    # Create new basis with new kpoints
-    bs_basis = PlaneWaveBasis(basis, kgrid)
+    # Create new basis with new kpoints (either PlaneWaveBasis or SiriusBasis, based on typeof)
+    bs_basis = Base.typename(typeof(basis)).wrapper(basis, kgrid)
 
     ham = Hamiltonian(bs_basis; ρ, τ)
     eigres = diagonalize_all_kblocks(eigensolver, ham, n_bands + n_extra;
