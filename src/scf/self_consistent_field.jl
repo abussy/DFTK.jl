@@ -51,7 +51,7 @@ end
 Obtain new density ρ by diagonalizing `ham`. Follows the policy imposed by the `bands`
 data structure to determine and adjust the number of bands to be computed.
 """
-function next_density(ham::Hamiltonian,
+function next_density(ham::AbstractHamiltonian,
                       nbandsalg::NbandsAlgorithm=AdaptiveBands(ham.basis.model),
                       fermialg::AbstractFermiAlgorithm=default_fermialg(ham.basis.model);
                       eigensolver=lobpcg_hyper, ψ=nothing, eigenvalues=nothing,
@@ -128,7 +128,7 @@ Overview of parameters:
   intermediate state.
 """
 @timing function self_consistent_field(
-    basis::PlaneWaveBasis{T};
+    basis::AbstractBasis{T};
     ρ=guess_density(basis),
     τ=any(needs_τ, basis.terms) ? zero(ρ) : nothing,
     ψ=nothing,

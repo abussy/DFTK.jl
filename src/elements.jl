@@ -152,6 +152,9 @@ AtomsBase.mass(el::ElementPsp)    = el.mass
 AtomsBase.species(el::ElementPsp) = el.species
 charge_ionic(el::ElementPsp)      = charge_ionic(el.psp)
 has_core_density(el::ElementPsp)  = has_core_density(el.psp)
+charge_nuclear(el::ElementPsp) = el.Z
+get_path(el::ElementPsp) = get_path(el.psp)
+get_rcut(el::ElementPsp) = get_rcut(el.psp)
 
 function local_potential_fourier(el::ElementPsp, p::T) where {T <: Real}
     p == 0 && return zero(T)  # Compensating charge background

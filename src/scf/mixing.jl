@@ -223,8 +223,8 @@ function Base.show(io::IO, mixing::χ0Mixing)
     print(io, "RPA=$(mixing.RPA), reltol=$(mixing.reltol))")
 end
 
-@views @timing "χ0Mixing" function mix_density(mixing::χ0Mixing, basis, δF::AbstractArray{T};
-                                               ρin, kwargs...) where {T}
+@views @timing "χ0Mixing" function mix_density(mixing::χ0Mixing, basis::PlaneWaveBasis{T},
+                                               δF::AbstractArray{T}; ρin, kwargs...) where {T}
     # Initialise χ0terms and remove nothings (terms that don't yield a contribution)
     χ0applies = filter(!isnothing, [χ₀(basis; ρin, kwargs...) for χ₀ in mixing.χ0terms])
     # If no applies left, do not bother running GMRES and directly do simple mixing

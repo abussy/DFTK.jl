@@ -31,8 +31,8 @@ All kwargs not specified below are passed to [`diagonalize_all_kblocks`](@ref):
               "compute_bands(scfres) function.")
     end
 
-    # Create new basis with new kpoints
-    bs_basis = PlaneWaveBasis(basis, kgrid)
+    # Create new basis with new kpoints (either PlaneWaveBasis or SiriusBasis, based on typeof)
+    bs_basis = Base.typename(typeof(basis)).wrapper(basis, kgrid)
 
     ham = Hamiltonian(bs_basis; ρ, τ)
     eigres = diagonalize_all_kblocks(eigensolver, ham, n_bands + n_extra;
