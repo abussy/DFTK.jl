@@ -20,3 +20,7 @@ In DFTK, the density is simply an array on the real-space grid. We need to
 find a way to transfer that data to SIRIUS, such that it can be understood
 there too. Then, similar considerations have to be taken such that the
 transfer of wave function coefficients can be done as well.
+
+Notes on the energy_hamiltonian function overloading:
+- needs to return an Energies and a Hamiltonian struct. Energies is a simple dictionary with the different contributions as keys, and the energies as values. This should be easy to keep in the same format as the current one. The Hamiltonian is gonna be quite different, therefore we need to define a SiriusHamiltonian struct. The SiriusHamiltonian should create a Hamiltonian on the SIRIUS side, and provide a pointer handler to DFTK.
+

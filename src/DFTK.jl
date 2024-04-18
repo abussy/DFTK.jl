@@ -104,6 +104,7 @@ export SiriusNlcg
 export GetSiriusEnergy
 export GetSiriusForces
 export GetSiriusStress
+export SetSiriusDensity
 include("sirius/SiriusBasis.jl")
 include("sirius/SiriusBlackBox.jl")
 

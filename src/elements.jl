@@ -1,5 +1,6 @@
 import PeriodicTable
 using AtomsBase
+using JSON
 
 # Alias to avoid similarity of elements and Element in DFTK module namespace
 periodic_table = PeriodicTable.elements
@@ -228,13 +229,30 @@ struct ElementSirius <: Element
     symbol         # Element symbol
     mass           # Atomic mass
     fname          # Path to JSON PSP file
+    charge_ionic   # Corresponds to z_valence
+    has_nlcc       # Is there non-linear core correction
 end
 
 function ElementSirius(key; fname, mass=element(Symbol(periodic_table[key].symbol)).atomic_mass)
-    ElementSirius(periodic_table[key].number, Symbol(periodic_table[key].symbol), mass, fname)
+    if !endswith(lowercase(fname), ".json") && !endswith(lowercase(fname), ".upf")
+        error("Sirius can only read pseupopotentials in its own JSON format, or in UPF v2.")
+    end
+    if endswith(lowercase(fname), ".json")
+        data = JSON.parsefile(fname)
+        z_valence = Int(data["pseudo_potential"]["header"]["z_valence"])
+        has_nlcc = Bool(data["pseudo_potential"]["header"]["core_correction"])
+    else
+        data = load_upf(fname)  
+        z_valence = Int(data["header"]["z_valence"])
+        has_nlcc = Bool(data["header"]["core_correction"])
+    end
+    ElementSirius(periodic_table[key].number, Symbol(periodic_table[key].symbol), mass, fname, 
+                  z_valence, has_nlcc)
 end
 
+charge_ionic(el::ElementSirius) = el.charge_ionic
 charge_nuclear(el::ElementSirius) = el.Z
+has_core_density(el::ElementSirius) = el.has_nlcc
 fname(el::ElementSirius) = el.fname
 AtomsBase.atomic_symbol(el::ElementSirius) = el.symbol
 AtomsBase.atomic_mass(el::ElementSirius) = el.mass

@@ -2,6 +2,10 @@ using MPI
 using JSON
 using SIRIUS
 
+#TODO: next objective is to pass the initial guess density calculated in DFTK to SIRIUS, as
+#      the starting point of the SCF => check that it works, that the order is correct, etc.
+#      by doing a single SCF step and comparing the energies
+
 struct SiriusBasis{T} <: AbstractBasis{T}
 
     # Underlying DFTK PW basis which corresponds exactly to the SIRIUS one
@@ -26,9 +30,6 @@ function FinalizeBasis(basis::SiriusBasis)
     end
 end
 
-@doc raw"""
-
-"""
 function SiriusBasis(model::Model{T};
                      Ecut::Number,
                      kgrid=nothing,
@@ -42,6 +43,9 @@ function SiriusBasis(model::Model{T};
     PWBasis = PlaneWaveBasis(model; Ecut, kgrid, kshift, variational, fft_size, 
                              symmetries_respect_rgrid, use_symmetries_for_kpoint_reduction,
                              comm_kpts, architecture, instantiate_terms=false)
+
+    # TODO: tmp: we set the SIRIUS library path to local build, so that no need to rebuild JLL
+    SIRIUS.libpath = ENV["LD_LIBRARY_PATH"]*"/libsirius.so" 
 
     #  Initialize the SIRIUS library
     if !SIRIUS.is_initialized()
@@ -96,21 +100,25 @@ function CreateSiriusParams(model::Model{T}, Ecut::Real) where {T <: Real}
 
     #Smearing. Note: not 100% match with SIRIUS options
     smearing_type = typeof(model.smearing)
-    UpdateSiriusParams(SiriusParams, "parameters", "smearing_width", model.temperature) 
-    if smearing_type == Smearing.None 
+    if smearing_type == Smearing.None
         #Actually not implemented, we just use the tiniest smearing width
         UpdateSiriusParams(SiriusParams, "parameters", "smearing_width", 1.0e-16)
     elseif smearing_type == Smearing.FermiDirac
         UpdateSiriusParams(SiriusParams, "parameters", "smearing", "fermi_dirac")
+        UpdateSiriusParams(SiriusParams, "parameters", "smearing_width", model.temperature) 
     elseif smearing_type == Smearing.Gaussian
         UpdateSiriusParams(SiriusParams, "parameters", "smearing", "gaussian")
+        UpdateSiriusParams(SiriusParams, "parameters", "smearing_width", model.temperature) 
     elseif smearing_type == Smearing.MarzariVanderbilt
         UpdateSiriusParams(SiriusParams, "parameters", "smearing", "cold")
+        UpdateSiriusParams(SiriusParams, "parameters", "smearing_width", model.temperature) 
     else
         @error("Smearing type $smearing_type not implemented in SIRIUS")
     end    
 
     #Cutoffs work as follow: cutoff_dftk = 0.5*cutoff_qe = 0.5*cutoff_sirius^2
+    #TODO: we need to make sure that the grids are 100% compatible. It appears to not always
+    #      be the case. Why?
     sirius_cutoff = sqrt(2*Ecut)
     UpdateSiriusParams(SiriusParams, "parameters", "gk_cutoff", sirius_cutoff)
     #TODO: for now, we use the default x2 factor of NC PPs. This will need adaptation
@@ -130,4 +138,25 @@ function CreateSiriusParams(model::Model{T}, Ecut::Real) where {T <: Real}
     UpdateSiriusParams(SiriusParams, "unit_cell", "atoms", atoms)
 
     return SiriusParams
+end
+
+###TODO: it should only be there temporarily
+###Note: the guess_density function using ElementSirius does not spit the same density as
+###      the one taking ElementPsp, because some internal info on the potential is not available 
+###      to DFTK. Maybe we should revert back the ElementSirius to ElementPsp in case of UPF v2 NC
+function SetSiriusDensity(basis::SiriusBasis{T}, ρ::Array{T, 4}) where {T <: Real}
+
+    #TODO: it seems that z_offset = -1 does it, at least with k-point diag.  What would happen
+    #      in the case where nprocs >> nkpoints? Not allowed by DFTK, but maybe in the future,
+    #      this could be useful to over-parallelize sirius
+    z_offset = -1 #SIRIUS.get_fft_local_z_offset(basis.SiriusCtx)
+    #z_offset = 0 #SIRIUS.get_fft_local_z_offset(basis.SiriusCtx)
+
+    #TODO: with MPI, need to provide an offset that matches the SIRIUS one. Do we also need
+    #      to only provide the fraction of the array along the z direction?
+    #      We really need to figure out whether the FFT grid of SIRIUS is distributed or not.
+    #      It it is never the case, then pass offset = -1 solves it. If it is distributed, 
+    #      maybe this would even work, and internally each rank takes its share. I guess We
+    #      can compute the energy associated to the density and compare parallel and serial runs
+    SIRIUS.set_rg_density(basis.SiriusGs, ρ, size(ρ)[1], size(ρ)[2], size(ρ)[3], z_offset)
 end
