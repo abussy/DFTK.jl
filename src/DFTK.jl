@@ -99,12 +99,17 @@ export Energies
 include("Energies.jl")
 
 export SiriusBasis
+export FinalizeBasis
 export SiriusSCF
 export SiriusNlcg
 export GetSiriusEnergy
 export GetSiriusForces
 export GetSiriusStress
 export SetSiriusDensity
+export GetSiriusDensity
+export SiriusHamiltonian
+export SiriusEnergies
+export SiriusDiagonalize
 include("sirius/SiriusBasis.jl")
 include("sirius/SiriusBlackBox.jl")
 

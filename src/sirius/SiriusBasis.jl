@@ -6,7 +6,7 @@ using SIRIUS
 #      the starting point of the SCF => check that it works, that the order is correct, etc.
 #      by doing a single SCF step and comparing the energies
 
-struct SiriusBasis{T} <: AbstractBasis{T}
+mutable struct SiriusBasis{T} <: AbstractBasis{T}
 
     # Underlying DFTK PW basis which corresponds exactly to the SIRIUS one
     PWBasis::PlaneWaveBasis{T}
@@ -18,13 +18,25 @@ struct SiriusBasis{T} <: AbstractBasis{T}
 
     # Sirius parameters
     SiriusParams::Dict{Any}
-                     
+
+    function SiriusBasis(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams)
+        x = new{typeof(PWBasis.Ecut)}(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams)
+        finalizer(FinalizeBasis, x)
+    end
+
 end
 
+#TODO: add this as the finalizer of the SiriusBasis? Only if does happen before MPI.finalize.
+#      OK with local changes to the GS destructor, provided verbosity < 2 (we will probbably
+#      force verbosity of zero in the future, anyways)
+#TODO: is it the best to call initialize and finalize of SIRIUS here, or should it be in DFTK.jl
 function FinalizeBasis(basis::SiriusBasis)
     SIRIUS.free_ground_state_handler(basis.SiriusGs)
     SIRIUS.free_kpoint_set_handler(basis.SiriusKps)
     SIRIUS.free_context_handler(basis.SiriusCtx)
+end
+
+function FinalizeSirius()
     if SIRIUS.is_initialized()
         SIRIUS.finalize(false)
     end
@@ -65,7 +77,15 @@ function SiriusBasis(model::Model{T};
 
     SiriusGs = SIRIUS.create_ground_state(SiriusKps) 
 
-    SiriusBasis(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams)
+    SB = SiriusBasis(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams)
+
+    # Make sure finlalizer is called before MPI.Finalize()
+    MPI.add_finalize_hook!(() -> FinalizeBasis(SB))
+
+    # Only finalize SIRIUS library at program exit
+    atexit(FinalizeSirius)
+
+    return SB
 end
 
 function UpdateSiriusParams(SiriusParams::Dict{Any}, section::String, keyword::String, value::Any)
@@ -160,3 +180,76 @@ function SetSiriusDensity(basis::SiriusBasis{T}, ρ::Array{T, 4}) where {T <: Re
     #      can compute the energy associated to the density and compare parallel and serial runs
     SIRIUS.set_rg_density(basis.SiriusGs, ρ, size(ρ)[1], size(ρ)[2], size(ρ)[3], z_offset)
 end
+
+function GetSiriusDensity(basis::SiriusBasis{T}) where {T <: Real}
+    z_offset = -1
+    SIRIUS.get_rg_density(basis.SiriusGs, basis.PWBasis.fft_size[1], basis.PWBasis.fft_size[2],
+                          basis.PWBasis.fft_size[3], z_offset)
+end
+
+###TODO: it should only be there temporarily
+mutable struct SiriusHamiltonian 
+    basis::SiriusBasis
+    ham::SIRIUS.HamiltonianHandler
+
+    function SiriusHamiltonian(basis)
+        ham = SIRIUS.create_hamiltonian(basis.SiriusGs)
+        x = new(basis, ham)
+        finalizer(FreeSiriusHamiltonian, x)
+    end
+end
+
+function FreeSiriusHamiltonian(H0::SiriusHamiltonian)
+    SIRIUS.free_hamiltonian_handler(H0.ham)
+end
+
+#TODO: might want to add a function to get the initial density from SIRIUS
+function SiriusHamiltonian(basis::SiriusBasis, ρ::Array{<:Real, 4})
+    SetSiriusDensity(basis, ρ)
+    SiriusHamiltonian(basis)
+end
+
+###TODO: this should only be there temporarily
+function SiriusEnergies(basis::SiriusBasis)
+
+    #TODO: would need to add terms in case of PAW or full potential
+    #TODO: need to add terms in case of nspins = 2 (magnetism)
+    dftk_to_sirius = Dict()
+    dftk_to_sirius["OneElectron"] = [Dict("name" => "one-el", "fac" => -1.0),
+                                     Dict("name" => "evalsum", "fac" => 1.0)]
+    dftk_to_sirius["Hartree"] = [Dict("name" => "vha", "fac" => 0.5)]
+    dftk_to_sirius["Xc"] = [Dict("name" => "exc", "fac" => 1.0)]
+    dftk_to_sirius["Ewald"] = [Dict("name" => "ewald", "fac" => 1.0)]
+    dftk_to_sirius["Entropy"] = [Dict("name" => "demet", "fac" => 1.0)]
+
+    term_names = Vector{String}()
+    energy_values = Vector{Real}()
+    for (tname, sinfo) in dftk_to_sirius
+        energy = 0.0
+        for info in sinfo
+            energy += info["fac"]*GetSiriusEnergy(basis, info["name"])
+        end
+        push!(term_names, tname)
+        push!(energy_values, energy)
+    end
+
+    Energies(term_names, energy_values)
+end
+
+function energy_hamiltonian(basis::SiriusBasis; ρ, kwargs...)
+    #returns the energies and the Hamiltonian calculated by SIRIUS
+
+    ham = SiriusHamiltonian(basis, ρ)
+    energies = SiriusEnergies(basis)
+
+    (; energies, ham)
+end
+
+function SiriusDiagonalize(H0::SiriusHamiltonian; tol=1.0e-6, max_steps=100)
+    SIRIUS.diagonalize_hamiltonian(H0.basis.SiriusGs, H0.ham, tol, max_steps)
+end
+
+#function  next_density(ham::SiriusHamiltonian)
+#    #Digonalizes the SIRIUS Hamiltonian
+#
+#end
