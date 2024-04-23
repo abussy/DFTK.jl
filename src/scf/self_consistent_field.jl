@@ -126,7 +126,7 @@ Overview of parameters:
   intermediate state.
 """
 @timing function self_consistent_field(
-    basis::PlaneWaveBasis{T};
+    basis::AbstractBasis{T};
     ρ=guess_density(basis),
     ψ=nothing,
     tol=1e-6,
@@ -161,7 +161,7 @@ Overview of parameters:
     history_Etot = T[]
     history_Δρ   = T[]
     converged = false
-
+        
     # We do density mixing in the real representation
     # TODO support other mixing types
     function fixpoint_map(ρin)
@@ -201,7 +201,9 @@ Overview of parameters:
         converged = MPI.bcast(converged, 0, MPI.COMM_WORLD)  # Ensure same converged
         callback(merge(info, (; converged)))
 
-        ρin + T(damping) .* mix_density(mixing, basis, Δρ; info...)
+        #TODO: fix it for  SIRIUS
+        #ρin + T(damping) .* mix_density(mixing, basis, Δρ; info...)
+        ρout
     end
 
     # Tolerance and maxiter are only dummy here: Convergence is flagged by is_converged

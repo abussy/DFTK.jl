@@ -98,21 +98,6 @@ include("supercell.jl")
 export Energies
 include("Energies.jl")
 
-export SiriusBasis
-export FinalizeBasis
-export SiriusSCF
-export SiriusNlcg
-export GetSiriusEnergy
-export GetSiriusForces
-export GetSiriusStress
-export SetSiriusDensity
-export GetSiriusDensity
-export SiriusHamiltonian
-export SiriusEnergies
-export SiriusDiagonalize
-include("sirius/SiriusBasis.jl")
-include("sirius/SiriusBlackBox.jl")
-
 export Hamiltonian
 export HamiltonianBlock
 export energy_hamiltonian
@@ -207,6 +192,22 @@ export attach_psp
 include("pseudo/load_psp.jl")
 include("pseudo/list_psp.jl")
 include("pseudo/attach_psp.jl")
+
+export SiriusBasis
+export FinalizeBasis
+export SiriusSCF
+export SiriusNlcg
+export GetSiriusEnergy
+export GetSiriusForces
+export GetSiriusStress
+export SetSiriusDensity
+export GetSiriusDensity
+export SiriusHamiltonian
+export SiriusEnergies
+export SiriusDiagonalize
+export self_consistent_field_test
+include("sirius/SiriusBasis.jl")
+include("sirius/SiriusBlackBox.jl")
 
 export atomic_system, periodic_system  # Reexport from AtomsBase
 export run_wannier90
