@@ -201,9 +201,8 @@ Overview of parameters:
         converged = MPI.bcast(converged, 0, MPI.COMM_WORLD)  # Ensure same converged
         callback(merge(info, (; converged)))
 
-        #TODO: fix it for  SIRIUS
-        #ρin + T(damping) .* mix_density(mixing, basis, Δρ; info...)
-        ρout
+        ρin + T(damping) .* mix_density(mixing, basis, Δρ; info...)
+        #ρout
     end
 
     # Tolerance and maxiter are only dummy here: Convergence is flagged by is_converged

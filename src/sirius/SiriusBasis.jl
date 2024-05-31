@@ -19,17 +19,18 @@ mutable struct SiriusBasis{T} <: AbstractBasis{T}
     # Sirius parameters
     SiriusParams::Dict{Any}
 
-    function SiriusBasis(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams)
-        x = new{typeof(PWBasis.Ecut)}(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams)
+    # Mapping of of the G+k vector indices between DFTK and SIRIUS, in both directions, for each KP
+    D2S_mapping::Vector{Vector{Int}}
+    S2D_mapping::Vector{Vector{Int}}
+
+    function SiriusBasis(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams, D2S_mapping, S2D_mapping)
+        x = new{typeof(PWBasis.Ecut)}(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams,
+                                      D2S_mapping, S2D_mapping)
         finalizer(FinalizeBasis, x)
     end
 
 end
 
-#TODO: add this as the finalizer of the SiriusBasis? Only if does happen before MPI.finalize.
-#      OK with local changes to the GS destructor, provided verbosity < 2 (we will probbably
-#      force verbosity of zero in the future, anyways)
-#TODO: is it the best to call initialize and finalize of SIRIUS here, or should it be in DFTK.jl
 function FinalizeBasis(basis::SiriusBasis)
     SIRIUS.free_ground_state_handler(basis.SiriusGs)
     SIRIUS.free_kpoint_set_handler(basis.SiriusKps)
@@ -66,6 +67,7 @@ function SiriusBasis(model::Model{T};
                              comm_kpts, architecture, instantiate_terms=false)
 
     # TODO: tmp: we set the SIRIUS library path to local build, so that no need to rebuild JLL
+    #       eventually, need to set that in Project.toml or some equivalent file
     SIRIUS.libpath = ENV["LD_LIBRARY_PATH"]*"/libsirius.so" 
 
     #  Initialize the SIRIUS library
@@ -80,13 +82,16 @@ function SiriusBasis(model::Model{T};
     SiriusCtx = SIRIUS.create_context_from_json(PWBasis.comm_kpts, ParamsJson)
     SIRIUS.initialize_context(SiriusCtx)
 
+    #TODO: insure that the k-point distribution is compatibale between SIRIUS and DFTK
     SiriusKps = SIRIUS.create_kset(SiriusCtx; num_kp=length(PWBasis.kweights_global), 
                                    k_coords=PWBasis.kcoords_global, 
                                    k_weights=PWBasis.kweights_global)
 
     SiriusGs = SIRIUS.create_ground_state(SiriusKps) 
 
-    SB = SiriusBasis(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams)
+    D2S_mapping, S2D_mapping = GetDftkSiriusMapping(PWBasis, SiriusKps)
+
+    SB = SiriusBasis(PWBasis, SiriusCtx, SiriusKps, SiriusGs, SiriusParams, D2S_mapping, S2D_mapping)
 
     # Make sure finlalizer is called before MPI.Finalize()
     MPI.add_finalize_hook!(() -> FinalizeBasis(SB))
@@ -126,9 +131,9 @@ function CreateSiriusParams(model::Model{T}, Ecut::Real) where {T <: Real}
     # Go over the terms of the model, and check that it is compatible with SIRIUS + extract XC info
     # TODO. For now, we simlpy assume it is compatible, and we do a PBE model
     UpdateSiriusParams(SiriusParams, "parameters", "xc_functionals", ["XC_GGA_X_PBE", "XC_GGA_C_PBE"])
+    #UpdateSiriusParams(SiriusParams, "iterative_solver", "type", "exact") #TODO: this is tmp
 
     #Smearing. Note: not 100% match with SIRIUS options
-    #TODO: might be irrelevant, given that we calculate the occupation on the DFTK side
     smearing_type = typeof(model.smearing)
     if smearing_type == Smearing.None
         #Actually not implemented, we just use the tiniest smearing width
@@ -170,25 +175,16 @@ function CreateSiriusParams(model::Model{T}, Ecut::Real) where {T <: Real}
     return SiriusParams
 end
 
-###TODO: it should only be there temporarily
-###Note: the guess_density function using ElementSirius does not spit the same density as
-###      the one taking ElementPsp, because some internal info on the potential is not available 
-###      to DFTK. Maybe we should revert back the ElementSirius to ElementPsp in case of UPF v2 NC
 function SetSiriusDensity(basis::SiriusBasis{T}, ρ::Array{T, 4}) where {T <: Real}
 
-    #TODO: it seems that z_offset = -1 does it, at least with k-point diag.  What would happen
+    #TODO: it seems that z_offset = -1 works.  What would happen
     #      in the case where nprocs >> nkpoints? Not allowed by DFTK, but maybe in the future,
     #      this could be useful to over-parallelize sirius
     z_offset = -1 #SIRIUS.get_fft_local_z_offset(basis.SiriusCtx)
     #z_offset = 0 #SIRIUS.get_fft_local_z_offset(basis.SiriusCtx)
 
-    #TODO: with MPI, need to provide an offset that matches the SIRIUS one. Do we also need
-    #      to only provide the fraction of the array along the z direction?
-    #      We really need to figure out whether the FFT grid of SIRIUS is distributed or not.
-    #      It it is never the case, then pass offset = -1 solves it. If it is distributed, 
-    #      maybe this would even work, and internally each rank takes its share. I guess We
-    #      can compute the energy associated to the density and compare parallel and serial runs
     SIRIUS.set_rg_density(basis.SiriusGs, ρ, size(ρ)[1], size(ρ)[2], size(ρ)[3], z_offset)
+    FFTSiriusDensity(basis)
 end
 
 function GetSiriusDensity(basis::SiriusBasis{T}) where {T <: Real}
@@ -197,7 +193,10 @@ function GetSiriusDensity(basis::SiriusBasis{T}) where {T <: Real}
                           basis.fft_size[3], z_offset)
 end
 
-###TODO: it should only be there temporarily
+function FFTSiriusDensity(basis::SiriusBasis)
+    SIRIUS.fft_transform(basis.SiriusGs, "rho", -1)
+end
+
 mutable struct SiriusHamiltonian 
     basis::SiriusBasis
     ham::SIRIUS.HamiltonianHandler
@@ -213,13 +212,11 @@ function FreeSiriusHamiltonian(H0::SiriusHamiltonian)
     SIRIUS.free_hamiltonian_handler(H0.ham)
 end
 
-#TODO: might want to add a function to get the initial density from SIRIUS
 function SiriusHamiltonian(basis::SiriusBasis, ρ::Array{<:Real, 4})
     SetSiriusDensity(basis, ρ)
     SiriusHamiltonian(basis)
 end
 
-###TODO: this should only be there temporarily
 function SiriusEnergies(basis::SiriusBasis)
 
     #TODO: would need to add terms in case of PAW or full potential
@@ -246,7 +243,6 @@ function SiriusEnergies(basis::SiriusBasis)
     Energies(term_names, energy_values)
 end
 
-#TODO: need to get up to date Hartree energy, even at first SCF
 function energy_hamiltonian(basis::SiriusBasis, ψ, occupation; ρ, kwargs...)
     #returns the energies and the Hamiltonian calculated by SIRIUS
 
@@ -260,16 +256,24 @@ function SiriusDiagonalize(H0::SiriusHamiltonian, nev_per_kpoint::Int; tol=1.0e-
     #TODO: currently uses SIRIUS' internal guess for Ψ, should we enable passing the guess as well?
     converged, niter = SIRIUS.diagonalize_hamiltonian(H0.basis.SiriusGs, H0.ham, tol, maxiter)
 
+    kpoints = H0.basis.kpoints
+
     #return eigenvalues, eigenvectors, niter, converged
-    nkp = length(H0.basis.kpoints)
     ispin = 1 #TODO: deal with npsins = 2 case
     λ = []
     X = []
-    for ik = 1:nkp
+    for (ik, kpt) in enumerate(kpoints)
         push!(λ, SIRIUS.get_band_energies(H0.basis.SiriusKps, ik, ispin, nev_per_kpoint))
-        push!(X, 0)
+        n_Gk = length(G_vectors(H0.basis.PWBasis, kpt)) #TODO: add warnings as in diag.jl?
+        #TODO: could we have a problem because internally in SIRIUS, there are more bands? (contiguity)
+        Spsi = SIRIUS.get_psi(H0.basis.SiriusKps, ik, ispin, n_Gk, nev_per_kpoint)
+        Dpsi = Matrix{ComplexF64}(undef, n_Gk, nev_per_kpoint)
+        for iel = 1:nev_per_kpoint
+            Dpsi[:, iel] = RemapArray(Spsi[:, iel], H0.basis.D2S_mapping[ik])[:]
+        end
+        push!(X, Dpsi)
     end
-    (; λ=λ, X=X, n_iter=niter, converged=converged) #TODO: communicate wave functions
+    (; λ=λ, X=X, n_iter=niter, converged=converged)
 end
 
 function SiriusSetOccupation(basis::SiriusBasis, occupation::AbstractVector)
@@ -317,16 +321,17 @@ function next_density(ham::SiriusHamiltonian,
 
     # Inherited from original next_density()
     n_bands_compute = mpi_max(n_bands_compute, ham.basis.comm_kpts)
-    SIRIUS.set_num_bands(ham.basis.SiriusCtx, n_bands_compute)
+    #TODO: probably need a safety measure, so that we never go too high
+    #      we also need to be 100% sure that changing n_bands in SIRIUS at runtime is ok, if not
+    #      we will need to either settle for an upper bound, or fix it in SIRIUS
+    SIRIUS.set_num_bands(ham.basis.SiriusCtx, n_bands_compute) 
 
     #tol is passed by kwargs as determine_diagtol, which is way too big and variable
-    #TODO: figure out why and fix it. I suspect it is linked to the first energy being shit, because of no Hartree
+    #TODO: figure out why and fix it. 
     eigres = SiriusDiagonalize(ham, n_bands_compute)#; kwargs...) 
     eigres.converged || (@warn "Eigensolver not converged" n_iter=eigres.n_iter)
 
     # Check maximal occupation of the unconverged bands is sensible.
-    #TODO: need to go through SIRIUS to get the occupation and Fermi energy, because
-    #      eigenvalues are rigidly shifted, probably due to some different definition of the Ham.
     occupation, εF = compute_occupation(ham, n_bands_compute)
     minocc = maximum(minimum, occupation)
 
@@ -338,17 +343,82 @@ function next_density(ham::SiriusHamiltonian,
               "`nbandsalg=AdaptiveBands(model; n_bands_converge=$(n_bands_converge + 3)`)")
     end
 
-    ρout = SiriusComputeDensity(ham.basis)
+    #TODO: both approach work now that the wave functions are exchanged. Need to choose one.
+    #      When we move away from NC, then we might not have a choice anymore
+    #ρout = SiriusComputeDensity(ham.basis)
+    ρout = compute_density(ham.basis.PWBasis, eigres.X, occupation; nbandsalg.occupation_threshold)
 
     (; ψ=eigres.X, eigenvalues=eigres.λ, occupation, εF, ρout, diagonalization=eigres,
      n_bands_converge, nbandsalg.occupation_threshold)
 
 end
 
-#TODO: use SIRIUS to generate the guess density? Probably should
-guess_density(basis::SiriusBasis) = guess_density(basis.PWBasis)
+function guess_density(basis::SiriusBasis)
+    SIRIUS.generate_initial_density(basis.SiriusGs)
+    GetSiriusDensity(basis)
+end
+
+function GetDftkSiriusMapping(PWBasis::PlaneWaveBasis, SiriusKps::SIRIUS.KpointSetHandler)
+    #Loop over k-points, then loop over integer coordinates of G+k vectors of DFTK and SIRIUS
+    #to match them to each other. Necessary to exchange wave functions
+
+    #TODO: might want to rename these, or at least document them. It's kinda confusing now 
+    #      (see remapping in SiriusDiagonalize)
+    D2S_mapping = []
+    S2D_mapping = []
+
+    kpoints = PWBasis.kpoints
+
+    for (ik, kpt) in enumerate(kpoints)
+        n_Gk = length(G_vectors(PWBasis, kpt))
+        Sgkvec = SIRIUS.get_gkvec(SiriusKps, ik, n_Gk)
+        Dgkvec = kpt.G_vectors
+        D2S, S2D = GetMapping(Sgkvec, Dgkvec, kpt.coordinate)
+        push!(D2S_mapping, D2S)
+        push!(S2D_mapping, S2D)
+    end
+
+    return D2S_mapping, S2D_mapping
+end
+
+#TODO: is it where we should have explicit types for Julia performance?
+function GetMapping(Sgkvec, Dgkvec, kp_coord)
+    D2S = Vector{Int}(undef, length(Sgkvec))
+    S2D = Vector{Int}(undef, length(Dgkvec))
+
+    for (is, sg) in enumerate(Sgkvec)
+        for (id, dg) in enumerate(Dgkvec)
+            #In DFTK, test is on (G+k)**2 <= Ecut, but only G is stored
+            #In SIRIUS (G+k) is stored, need to remove it for check
+            sg_int = [Int(sg[i]-kp_coord[i]) for i in 1:3]
+            if sg_int == dg
+                D2S[id] = is
+                S2D[is] = id
+                break
+            end
+            if id == length(Dgkvec)
+                @error("Missmatch in G+k vectors between DFTK and SIRIUS")
+            end
+        end
+    end
+
+    return D2S, S2D
+end
+
+#TODO: this would also probably benefits from having explicit types, and not using push!
+#TODO: there might also be a Julia intrinsics for this, the same as in Python
+function RemapArray(array, mapping)
+    new = []
+    for i = 1:length(array)
+        push!(new, array[mapping[i]])
+    end
+    return new
+end
+
+
 default_diagtolalg(basis::SiriusBasis; tol, kwargs...) = AdaptiveDiagtol()
-mix_density(mixing::Any, basis::SiriusBasis, Δρ::Any; kwargs...) = 
+
+mix_density(mixing::Mixing, basis::SiriusBasis, Δρ; kwargs...) = 
     mix_density(mixing, basis.PWBasis, Δρ; kwargs...)
 
 #TEST
@@ -363,8 +433,6 @@ function self_consistent_field_test(basis::SiriusBasis; ρ=nothing, maxiter=100,
 
     ρout = ρ
 
-    #TODO: this function works, but the overloading of DFTK's SCF does not. Find out why
-    #      by adding things step by step
     for i = 1:maxiter
         energies, ham = energy_hamiltonian(basis, nothing, occupation; ρ=ρout, eigenvalues, εF)
 
