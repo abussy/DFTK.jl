@@ -149,7 +149,7 @@ export model_DFT, model_PBE, model_LDA, model_SCAN
 include("standard_models.jl")
 
 export KerkerMixing, KerkerDosMixing, SimpleMixing, DielectricMixing
-export LdosMixing, HybridMixing, χ0Mixing
+export LdosMixing, HybridMixing, χ0Mixing, x0Model
 export FixedBands, AdaptiveBands
 export scf_damping_solver
 export scf_anderson_solver
@@ -207,7 +207,6 @@ export SiriusEnergies
 export SiriusDiagonalize
 export self_consistent_field_test
 include("sirius/SiriusBasis.jl")
-include("sirius/SiriusBlackBox.jl")
 
 export atomic_system, periodic_system  # Reexport from AtomsBase
 export run_wannier90
