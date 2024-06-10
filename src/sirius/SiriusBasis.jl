@@ -2,6 +2,10 @@ using MPI
 using JSON
 using SIRIUS
 
+#Important node: to get full equivalence (i.e. same total energies) between DFTK and SIRIUS/QE, there
+#                are 2 things to do: use the simpson method on all radial grid integrations in DFTK.
+#                Disable 10 a.u. arbitrary cutoff of the radial grid in SIRIUS, radial_integrals.cpp 
+
 mutable struct SiriusBasis{T} <: AbstractBasis{T}
 
     # Underlying DFTK PW basis which corresponds exactly to the SIRIUS one
