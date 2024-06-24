@@ -202,7 +202,6 @@ Overview of parameters:
         callback(merge(info, (; converged)))
 
         ρin + T(damping) .* mix_density(mixing, basis, Δρ; info...)
-        #ρout
     end
 
     # Tolerance and maxiter are only dummy here: Convergence is flagged by is_converged

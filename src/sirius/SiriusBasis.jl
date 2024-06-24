@@ -6,6 +6,7 @@ using SIRIUS
 #                are 2 things to do: use the simpson method on all radial grid integrations in DFTK.
 #                Disable 10 a.u. arbitrary cutoff of the radial grid in SIRIUS, radial_integrals.cpp 
 
+#TODO: we only allow for double precision with  SIRIUS, should we relect that in T down there?
 mutable struct SiriusBasis{T} <: AbstractBasis{T}
 
     # Underlying DFTK PW basis which corresponds exactly to the SIRIUS one
@@ -28,7 +29,6 @@ mutable struct SiriusBasis{T} <: AbstractBasis{T}
 
 end
 
-#TODO: put this into the above struct directly?
 function FinalizeBasis(basis::SiriusBasis)
     SIRIUS.free_ground_state_handler!(basis.sirius_gs)
     SIRIUS.free_kpoint_set_handler!(basis.sirius_kps)
@@ -37,7 +37,7 @@ end
 
 function FinalizeSirius()
     if SIRIUS.is_initialized()
-        SIRIUS.finalize(false)
+        SIRIUS.finalize(; call_mpi_fin=false)
     end
 end
 
@@ -208,17 +208,14 @@ mutable struct SiriusHamiltonian
 
     function SiriusHamiltonian(basis)
         ham = SIRIUS.create_hamiltonian(basis.sirius_gs)
-        x = new(basis, ham)
-        finalizer(FreeSiriusHamiltonian, x)
+        H0 = new(basis, ham)
+        finalizer(H0) do x
+            SIRIUS.free_hamiltonian_handler!(x.ham)
+        end
     end
 end
 
-#TODO: try to add it to the above struct for less code
-function FreeSiriusHamiltonian(H0::SiriusHamiltonian)
-    SIRIUS.free_hamiltonian_handler!(H0.ham)
-end
-
-function SiriusHamiltonian(basis::SiriusBasis, ρ::Array{<:Real, 4})
+function SiriusHamiltonian(basis::SiriusBasis, ρ)
     set_sirius_density(basis, ρ)
     SiriusHamiltonian(basis)
 end
@@ -268,21 +265,22 @@ function sirius_diagonalize(H0::SiriusHamiltonian, nev_per_kpoint::Int; tol=1.0e
 
     #return eigenvalues, eigenvectors, niter, converged
     ispin = 1 #TODO: deal with npsins = 2 case
-    λ = []
-    X = []
-    energies = Vector{Float64}(undef, nev_per_kpoint)
+    λ = Vector{Vector{Float64}}(undef, length(kpoints))
+    X = Vector{Matrix{ComplexF64}}(undef, length(kpoints))
     for (ik, kpt) in enumerate(kpoints)
+        energies = Vector{Float64}(undef, nev_per_kpoint)
         SIRIUS.get_band_energies!(H0.basis.sirius_kps, ik_global(ik, H0.basis), ispin, energies)
-        push!(λ, energies)
+        λ[ik] = energies
+
         n_Gk = length(G_vectors(H0.basis.pw_basis, kpt)) #TODO: add warnings as in diag.jl?
+        psi = Matrix{ComplexF64}(undef, n_Gk, nev_per_kpoint)
         #TODO: could we have a problem because internally in SIRIUS, there are more bands? (contiguity)
-        Dpsi = Matrix{ComplexF64}(undef, n_Gk, nev_per_kpoint)
-        Spsi = Matrix{ComplexF64}(undef, n_Gk, nev_per_kpoint)
-        SIRIUS.get_psi!(H0.basis.sirius_kps, ik_global(ik, H0.basis), ispin, Spsi)
+        SIRIUS.get_psi!(H0.basis.sirius_kps, ik_global(ik, H0.basis), ispin, psi)
+        
         for iel = 1:nev_per_kpoint
-            Dpsi[:, iel] = remap_array(Spsi[:, iel], H0.basis.d2s_mapping[ik])[:]
+            psi[:, iel] = psi[H0.basis.d2s_mapping[ik], iel]
         end
-        push!(X, Dpsi)
+        X[ik] = psi
     end
     (; λ=λ, X=X, n_iter=niter, converged=converged)
 end
@@ -292,18 +290,21 @@ function sirius_compute_density(basis::SiriusBasis)
     get_sirius_density(basis)
 end
 
-function compute_occupation(H0::SiriusHamiltonian, num_bands::Integer)
-    SIRIUS.find_band_occupancies(H0.basis.sirius_kps)
-    nkp = length(H0.basis.kpoints)    
+function sirius_set_occupation(basis::SiriusBasis, occupation)
+    nkp = length(basis.kpoints)    
     ispin = 1 #TODO nspins = 2 case
-    occupation = Vector{Vector{Float64}}()
-    band_occ = Vector{Float64}(undef, num_bands)
     for ikp = 1:nkp
-        SIRIUS.get_band_occupancies!(H0.basis.sirius_kps, ik_global(ikp, H0.basis), ispin, band_occ)
-        push!(occupation, band_occ)
+        SIRIUS.set_band_occupancies(basis.sirius_kps, ik_global(ikp, basis), ispin, occupation[ikp])
     end
-    εF = SIRIUS.get_energy(H0.basis.sirius_gs, "fermi")
-    (; occupation, εF)
+end
+
+function compute_occupation(basis::SiriusBasis, eigenvalues::AbstractVector,
+                            fermialg::AbstractFermiAlgorithm=default_fermialg(basis.model);
+                            kwargs ...)
+    occupation, εF = compute_occupation(basis.pw_basis, eigenvalues, fermialg; kwargs ...)
+    #Make sure that SIRIUS is up to date
+    sirius_set_occupation(basis, occupation)
+    return occupation, εF
 end
 
 #TODO: a lot of duplicated code, can we make it less so?, maybe by overloading the individual
@@ -339,11 +340,8 @@ function next_density(ham::SiriusHamiltonian,
     eigres.converged || (@warn "Eigensolver not converged" n_iter=eigres.n_iter)
 
     # Check maximal occupation of the unconverged bands is sensible.
-    #TODO: it seems that the latter does something extra in Sirius, figure out what
-    #      its probably something along the lines of: e_fermi is not computed
-    occupation, εF = compute_occupation(ham, n_bands_compute)
-    #occupation, εF = compute_occupation(ham.basis.pw_basis, eigres.λ, fermialg;
-    #                                    tol_n_elec=nbandsalg.occupation_threshold)
+    occupation, εF = compute_occupation(ham.basis, eigres.λ, fermialg;
+                                        tol_n_elec=nbandsalg.occupation_threshold)
     minocc = maximum(minimum, occupation)
 
     # Inherited from original next_density()
@@ -370,31 +368,33 @@ function get_gkvec_mapping(pw_basis::PlaneWaveBasis, sirius_kps::SIRIUS.KpointSe
     #Loop over k-points, then loop over integer coordinates of G+k vectors of DFTK and SIRIUS
     #to match them to each other. Necessary to exchange wave functions
 
-    d2s_mapping = [] #mapping from DFTK idx to SIRIUS idx (d2s_mapping[i_dftk] = i_sirius)
-    s2d_mapping = [] #mapping from SIRIUS idx to DFTK idx (s2d_mapping[i_sirius] = i_dftk)
+    kpoints = pw_basis.kpoints
+
+    # mapping from DFTK idx to SIRIUS idx (d2s_mapping[i_dftk] = i_sirius)
+    d2s_mapping = Vector{Vector{Int}}(undef, length(kpoints))
+    # mapping from SIRIUS idx to DFTK idx (s2d_mapping[i_sirius] = i_dftk)
+    s2d_mapping = Vector{Vector{Int}}(undef, length(kpoints))
 
     #note: kpoints are local in DFTK, but need to pass global idx to SIRIUS
-    kpoints = pw_basis.kpoints
     for (ik, kpt) in enumerate(kpoints)
         n_Gk = length(G_vectors(pw_basis, kpt))
         sgkvec = get_gkvec(sirius_kps, ik_global(ik, pw_basis), n_Gk)
         dgkvec = kpt.G_vectors
         d2s, s2d = get_mapping(sgkvec, dgkvec, kpt.coordinate)
-        push!(d2s_mapping, d2s)
-        push!(s2d_mapping, s2d)
+        d2s_mapping[ik] = d2s
+        s2d_mapping[ik] = s2d
     end
 
     return d2s_mapping, s2d_mapping
 end
 
-#TODO: this is a tmp function, that we really need to rewrite
 function get_gkvec(sirius_kps, ik_glob, ngpts)
-    gkvec__ = Vector{Cdouble}(undef, 3*ngpts)
+    gkvec__ = Matrix{Cdouble}(undef, 3, ngpts)
     SIRIUS.get_gkvec!(sirius_kps, ik_glob, gkvec__)
 
-    gkvec = []
-    for i = 0:ngpts-1
-       push!(gkvec, [gkvec__[3*i+1], gkvec__[3*i+2], gkvec__[3*i+3]])
+    gkvec = Vector{Vec3{Int}}(undef, ngpts)
+    for i = 1:ngpts
+       gkvec[i] = gkvec__[:, i]
     end
     return gkvec
 end
@@ -403,7 +403,6 @@ function ik_global(ik, basis)
     return basis.krange_thisproc[1][ik]
 end
 
-#TODO: is it where we should have explicit types for Julia performance?
 function get_mapping(sgkvec, dgkvec, kp_coord)
     d2s = Vector{Int}(undef, length(sgkvec))
     s2d = Vector{Int}(undef, length(dgkvec))
@@ -425,16 +424,6 @@ function get_mapping(sgkvec, dgkvec, kp_coord)
     end
 
     return d2s, s2d
-end
-
-#TODO: this would also probably benefits from having explicit types, and not using push!
-#TODO: there might also be a Julia intrinsics for this, the same as in Python
-function remap_array(array, mapping)
-    new = []
-    for i = 1:length(array)
-        push!(new, array[mapping[i]])
-    end
-    return new
 end
 
 function get_sirius_energy(basis::SiriusBasis{T}, label::String) where {T}
