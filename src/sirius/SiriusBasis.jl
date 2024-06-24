@@ -30,9 +30,9 @@ end
 
 #TODO: put this into the above struct directly?
 function FinalizeBasis(basis::SiriusBasis)
-    SIRIUS.free_ground_state_handler(basis.sirius_gs)
-    SIRIUS.free_kpoint_set_handler(basis.sirius_kps)
-    SIRIUS.free_context_handler(basis.sirius_ctx)
+    SIRIUS.free_ground_state_handler!(basis.sirius_gs)
+    SIRIUS.free_kpoint_set_handler!(basis.sirius_kps)
+    SIRIUS.free_context_handler!(basis.sirius_ctx)
 end
 
 function FinalizeSirius()
@@ -64,10 +64,6 @@ function SiriusBasis(model::Model{T};
                               symmetries_respect_rgrid, use_symmetries_for_kpoint_reduction,
                               comm_kpts, architecture, instantiate_terms=false)
 
-    # TODO: tmp: we set the SIRIUS library path to local build, so that no need to rebuild JLL
-    #       eventually, need to set that in Project.toml or some equivalent file
-    SIRIUS.libpath = ENV["LD_LIBRARY_PATH"]*"/libsirius.so" 
-
     #  Initialize the SIRIUS library
     if !SIRIUS.is_initialized()
         SIRIUS.initialize(false)
@@ -86,12 +82,12 @@ function SiriusBasis(model::Model{T};
                                     k_weights=pw_basis.kweights_global,
                                     init_kset=false)
 
-    #Insure that the k-point distribution is compatibale between SIRIUS and DFTK
+    # Insure that the k-point distribution is compatibale between SIRIUS and DFTK
     count = Vector{Int32}(undef, mpi_nprocs(comm_kpts))
     for ip = 1:mpi_nprocs(comm_kpts)
-        count[ip] = length(pw_basis.krange_allprocs[ip][1]) #TODO: second index is spin
+        count[ip] = length(pw_basis.krange_allprocs[ip][1]) #note: second index is spin
     end 
-    SIRIUS.initialize_kset(sirius_kps, count)
+    SIRIUS.initialize_kset(sirius_kps; count=count)
 
     sirius_gs = SIRIUS.create_ground_state(sirius_kps) 
 
@@ -121,7 +117,6 @@ function set_sirius_param(sirius_params::Dict{Any}, section::String, keyword::St
     sirius_params[section][keyword] = value     
 end
 
-#TODO: let's not allow modification of SISIURS parameters
 function set_sirius_param(basis::SiriusBasis, section::String, keyword::String, value::Any)
     set_sirius_param(basis.sirius_params, section, keyword, value)
 end
@@ -160,13 +155,10 @@ function create_sirius_params(model, Ecut, fft_size )
         set_sirius_param(sirius_params, "parameters", "smearing", "cold")
         set_sirius_param(sirius_params, "parameters", "smearing_width", model.temperature) 
     else
-        #TODO: not @ error, just error
-        @error("Smearing type $smearing_type not implemented in SIRIUS")
+        error("Smearing type $smearing_type not implemented in SIRIUS")
     end    
 
     #Cutoffs work as follow: cutoff_dftk = 0.5*cutoff_qe = 0.5*cutoff_sirius^2
-    #TODO: we need to make sure that the grids are 100% compatible. It appears to not always
-    #      be the case. Why?
     sirius_cutoff = sqrt(2*Ecut)
     set_sirius_param(sirius_params, "parameters", "gk_cutoff", sirius_cutoff)
     #TODO: for now, we use the default x2 factor of NC PPs. This will need adaptation
@@ -188,25 +180,26 @@ function create_sirius_params(model, Ecut, fft_size )
     return sirius_params
 end
 
-#TODO: mutating functions need to take a ! in the name
 function set_sirius_density(basis::SiriusBasis{T}, ρ::Array{T, 4}) where {T <: Real}
 
-    #TODO: it seems that z_offset = -1 works.  What would happen
-    #      in the case where nprocs >> nkpoints? Not allowed by DFTK, but maybe in the future,
-    #      this could be useful to over-parallelize sirius
-    z_offset = -1 #SIRIUS.get_fft_local_z_offset(basis.sirius_ctx)
-    #z_offset = 0 #SIRIUS.get_fft_local_z_offset(basis.sirius_ctx)
-
-    SIRIUS.set_rg_density(basis.sirius_gs, ρ, size(ρ)[1], size(ρ)[2], size(ρ)[3], z_offset)
+    SIRIUS.set_periodic_function(basis.sirius_gs, "rho"; f_rg=ρ, size_x=size(ρ)[1], size_y=size(ρ)[2],
+                                 size_z=size(ρ)[3], offset_z=-1)
     #make PW density available in SIRIUS
     SIRIUS.fft_transform(basis.sirius_gs, "rho", -1)
 end
 
 function get_sirius_density(basis::SiriusBasis{T}) where {T <: Real}
-    z_offset = -1
     #TODO: this should not do a hidden allocation,we should provide the array
-    SIRIUS.get_rg_density(basis.sirius_gs, basis.fft_size[1], basis.fft_size[2],
-                          basis.fft_size[3], z_offset)
+    get_rg_density(basis.sirius_gs, basis.fft_size[1], basis.fft_size[2], basis.fft_size[3])
+end
+
+#TODO: this is temporary and should absolutely be replaced
+function get_rg_density(sirius_gs, size_x, size_y, size_z)
+    #TODO: this is the thing to avoid: an allocation at each data exchange
+    f_rg = Array{Cdouble, 4}(undef, size_x, size_y, size_z, 1)
+    SIRIUS.get_periodic_function!(sirius_gs, "rho"; f_rg=f_rg, size_x=size_x, size_y=size_y,
+                                  size_z=size_z, offset_z=-1)
+    return f_rg
 end
 
 mutable struct SiriusHamiltonian 
@@ -222,7 +215,7 @@ end
 
 #TODO: try to add it to the above struct for less code
 function FreeSiriusHamiltonian(H0::SiriusHamiltonian)
-    SIRIUS.free_hamiltonian_handler(H0.ham)
+    SIRIUS.free_hamiltonian_handler!(H0.ham)
 end
 
 function SiriusHamiltonian(basis::SiriusBasis, ρ::Array{<:Real, 4})
@@ -277,27 +270,21 @@ function sirius_diagonalize(H0::SiriusHamiltonian, nev_per_kpoint::Int; tol=1.0e
     ispin = 1 #TODO: deal with npsins = 2 case
     λ = []
     X = []
+    energies = Vector{Float64}(undef, nev_per_kpoint)
     for (ik, kpt) in enumerate(kpoints)
-        push!(λ, SIRIUS.get_band_energies(H0.basis.sirius_kps, ik_global(ik, H0.basis), ispin, nev_per_kpoint))
+        SIRIUS.get_band_energies!(H0.basis.sirius_kps, ik_global(ik, H0.basis), ispin, energies)
+        push!(λ, energies)
         n_Gk = length(G_vectors(H0.basis.pw_basis, kpt)) #TODO: add warnings as in diag.jl?
         #TODO: could we have a problem because internally in SIRIUS, there are more bands? (contiguity)
-        Spsi = SIRIUS.get_psi(H0.basis.sirius_kps, ik_global(ik, H0.basis), ispin, n_Gk, nev_per_kpoint)
         Dpsi = Matrix{ComplexF64}(undef, n_Gk, nev_per_kpoint)
+        Spsi = Matrix{ComplexF64}(undef, n_Gk, nev_per_kpoint)
+        SIRIUS.get_psi!(H0.basis.sirius_kps, ik_global(ik, H0.basis), ispin, Spsi)
         for iel = 1:nev_per_kpoint
             Dpsi[:, iel] = remap_array(Spsi[:, iel], H0.basis.d2s_mapping[ik])[:]
         end
         push!(X, Dpsi)
     end
     (; λ=λ, X=X, n_iter=niter, converged=converged)
-end
-
-#TODO: is this ever needed?
-function sirius_set_occupation(basis::SiriusBasis, occupation::AbstractVector)
-    nkp = length(basis.kpoints)    
-    ispin = 1 #TODO nspins = 2 case
-    for ikp = 1:nkp
-        SIRIUS.set_band_occupancies(basis.sirius_kps, ikp, ispin, occupation[ikp])
-    end
 end
 
 function sirius_compute_density(basis::SiriusBasis)
@@ -310,9 +297,10 @@ function compute_occupation(H0::SiriusHamiltonian, num_bands::Integer)
     nkp = length(H0.basis.kpoints)    
     ispin = 1 #TODO nspins = 2 case
     occupation = Vector{Vector{Float64}}()
+    band_occ = Vector{Float64}(undef, num_bands)
     for ikp = 1:nkp
-        push!(occupation, Vector{Float64}(SIRIUS.get_band_occupancies(H0.basis.sirius_kps, 
-                                          ik_global(ikp, H0.basis), ispin, num_bands)))
+        SIRIUS.get_band_occupancies!(H0.basis.sirius_kps, ik_global(ikp, H0.basis), ispin, band_occ)
+        push!(occupation, band_occ)
     end
     εF = SIRIUS.get_energy(H0.basis.sirius_gs, "fermi")
     (; occupation, εF)
@@ -366,9 +354,6 @@ function next_density(ham::SiriusHamiltonian,
               "`nbandsalg=AdaptiveBands(model; n_bands_converge=$(n_bands_converge + 3)`)")
     end
 
-    #TODO: both approach work now that the wave functions are exchanged. Need to choose one.
-    #      When we move away from NC, then we might not have a choice anymore
-    #ρout = sirius_compute_density(ham.basis)
     ρout = compute_density(ham.basis.pw_basis, eigres.X, occupation; nbandsalg.occupation_threshold)
 
     (; ψ=eigres.X, eigenvalues=eigres.λ, occupation, εF, ρout, diagonalization=eigres,
@@ -385,16 +370,14 @@ function get_gkvec_mapping(pw_basis::PlaneWaveBasis, sirius_kps::SIRIUS.KpointSe
     #Loop over k-points, then loop over integer coordinates of G+k vectors of DFTK and SIRIUS
     #to match them to each other. Necessary to exchange wave functions
 
-    #TODO: might want to rename these, or at least document them. It's kinda confusing now 
-    #      (see remapping in SiriusDiagonalize)
-    d2s_mapping = []
-    s2d_mapping = []
+    d2s_mapping = [] #mapping from DFTK idx to SIRIUS idx (d2s_mapping[i_dftk] = i_sirius)
+    s2d_mapping = [] #mapping from SIRIUS idx to DFTK idx (s2d_mapping[i_sirius] = i_dftk)
 
     #note: kpoints are local in DFTK, but need to pass global idx to SIRIUS
     kpoints = pw_basis.kpoints
     for (ik, kpt) in enumerate(kpoints)
         n_Gk = length(G_vectors(pw_basis, kpt))
-        sgkvec = SIRIUS.get_gkvec(sirius_kps, ik_global(ik, pw_basis), n_Gk)
+        sgkvec = get_gkvec(sirius_kps, ik_global(ik, pw_basis), n_Gk)
         dgkvec = kpt.G_vectors
         d2s, s2d = get_mapping(sgkvec, dgkvec, kpt.coordinate)
         push!(d2s_mapping, d2s)
@@ -402,6 +385,18 @@ function get_gkvec_mapping(pw_basis::PlaneWaveBasis, sirius_kps::SIRIUS.KpointSe
     end
 
     return d2s_mapping, s2d_mapping
+end
+
+#TODO: this is a tmp function, that we really need to rewrite
+function get_gkvec(sirius_kps, ik_glob, ngpts)
+    gkvec__ = Vector{Cdouble}(undef, 3*ngpts)
+    SIRIUS.get_gkvec!(sirius_kps, ik_glob, gkvec__)
+
+    gkvec = []
+    for i = 0:ngpts-1
+       push!(gkvec, [gkvec__[3*i+1], gkvec__[3*i+2], gkvec__[3*i+3]])
+    end
+    return gkvec
 end
 
 function ik_global(ik, basis)
@@ -444,14 +439,6 @@ end
 
 function get_sirius_energy(basis::SiriusBasis{T}, label::String) where {T}
     return SIRIUS.get_energy(basis.sirius_gs, label)
-end
-
-function get_sirius_forces(basis::SiriusBasis{T}, label::String) where {T}
-    return SIRIUS.get_forces(basis.sirius_gs, label)
-end
-
-function get_sirius_stress(basis::SiriusBasis{T}, label::String) where {T}
-    return SIRIUS.get_stress_tensor(basis.sirius_gs, label)
 end
 
 default_diagtolalg(basis::SiriusBasis; tol, kwargs...) = AdaptiveDiagtol()
