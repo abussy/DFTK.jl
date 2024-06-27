@@ -54,7 +54,6 @@ end
 function diagonalize_all_kblocks(eigensolver, ham::SiriusHamiltonian, nev_per_kpoint::Int; kwargs ...)
     #Note: eigensolver and kwargs are only there to match the function signature for multiple dispatch
 
-    SIRIUS.set_num_bands(ham.basis.sirius_ctx, nev_per_kpoint) 
     #tol is passed by kwargs as determine_diagtol, which is way too big and variable
     #TODO: figure out why and fix it. 
     sirius_diagonalize(ham, nev_per_kpoint)#; kwargs...) 

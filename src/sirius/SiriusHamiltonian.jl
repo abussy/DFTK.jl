@@ -58,6 +58,8 @@ function get_sirius_energy(basis::SiriusBasis, label)
 end
 
 function sirius_diagonalize(H0::SiriusHamiltonian, nev_per_kpoint::Int; tol=1.0e-8, maxiter=100, kwargs...)
+
+    SIRIUS.set_num_bands(H0.basis.sirius_ctx, nev_per_kpoint)
     converged, niter = SIRIUS.diagonalize_hamiltonian(H0.basis.sirius_gs, H0.ham, tol, maxiter)
 
     kpoints = H0.basis.kpoints
