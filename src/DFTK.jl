@@ -193,20 +193,12 @@ include("pseudo/load_psp.jl")
 include("pseudo/list_psp.jl")
 include("pseudo/attach_psp.jl")
 
+#TODO: should SIRIUS be made an extension of DFTK ?
+#      Possibly tricky, because SiriusBasis and such use a lot of DFTK internals
 export SiriusBasis
-export FinalizeBasis
-export SiriusSCF
-export SiriusNlcg
-export GetSiriusEnergy
-export GetSiriusForces
-export GetSiriusStress
-export SetSiriusDensity
-export GetSiriusDensity
-export SiriusHamiltonian
-export SiriusEnergies
-export SiriusDiagonalize
-export self_consistent_field_test
 include("sirius/SiriusBasis.jl")
+include("sirius/SiriusHamiltonian.jl")
+include("sirius/SiriusUtils.jl")
 
 export atomic_system, periodic_system  # Reexport from AtomsBase
 export run_wannier90
