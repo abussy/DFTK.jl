@@ -52,7 +52,8 @@ function sirius_diagonalize(eigensolver, H0::SiriusHamiltonian, nev_per_kpoint::
 
     #Note: converge_by_energy=0 means we test convergence with the residual L2 norm, like in DFTK
     converged, niter = SIRIUS.diagonalize_hamiltonian(H0.basis.sirius_ctx, H0.basis.sirius_gs, H0.ham,
-                                                      tol, maxiter; converge_by_energy=0, 
+                                                      H0.basis.iter_tol_factor*tol, maxiter;
+                                                      converge_by_energy=0, 
                                                       exact_diagonalization=exact_diag)
 
     kpoints = H0.basis.kpoints
