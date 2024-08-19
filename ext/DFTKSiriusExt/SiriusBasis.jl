@@ -47,13 +47,16 @@ mutable struct SiriusBasis <: AbstractBasis{Float64}
     max_num_bands::Integer
     max_num_bands_factor::Integer
 
+    # A factor by which the tolerance is multiplied upon iterative eigensolver call
+    iter_tol_factor::Float64
+
     # Whether the stdout out of SIRIUS should be silenced to avoid output noise
     is_silent::Bool
 
     function SiriusBasis(pw_basis, sirius_ctx, sirius_kps, sirius_gs, d2s_mapping, s2d_mapping, 
-                         max_num_bands, max_num_bands_factor, is_silent)
+                         max_num_bands, max_num_bands_factor, iter_tol_factor, is_silent)
         x = new(pw_basis, sirius_ctx, sirius_kps, sirius_gs, d2s_mapping, s2d_mapping, max_num_bands, 
-                max_num_bands_factor, is_silent)
+                max_num_bands_factor, iter_tol_factor, is_silent)
         finalizer(FinalizeBasis, x)
     end
 
@@ -92,6 +95,10 @@ There are a few SiriusBasis specific arguments:
                         bands must be allocated from the start. This number is defined by 
                         max_num_bands_factor x n_electrons. The default value should be safe, while keeping
                         memory usage low. If not enough bands are available, an error message is issued.
+- iter_tol_factor: SIRIUS energies are more sensitive to numerical noise than DFTK energies. One way
+                   to increase numerical stability during the SCF is to reduce the input tolerance of
+                   the iterative solver when diagonalizing the Hamiltonian. In case of slow converging
+                   SCF cycle, reduce this number at the creation of the basis.
 - sirius_silent: SIRIUS tends to print messages to stdout, even on its lowest verbosity setting. This can
                  generate undesiered noise. Setting sirius_silent = true will completely silence the library.
                  Note that in case of hard calculations, some insights might be gained via the SIRIUS output
@@ -104,7 +111,8 @@ function DFTK.SiriusBasis(model::Model;
                           symmetries_respect_rgrid=isnothing(fft_size),
                           use_symmetries_for_kpoint_reduction=true,
                           comm_kpts=MPI.COMM_WORLD, architecture=CPU(),
-                          max_num_bands_factor=10, sirius_silent=true)
+                          max_num_bands_factor=10, iter_tol_factor=0.25,
+                          sirius_silent=true)
    
     # Create the PW basis on the DFTK side
     pw_basis = PlaneWaveBasis(model; Ecut, kgrid, kshift, variational, fft_size,
@@ -152,7 +160,7 @@ function DFTK.SiriusBasis(model::Model;
     d2s_mapping, s2d_mapping = get_gkvec_mapping(pw_basis, sirius_kps)
 
     SB = SiriusBasis(pw_basis, sirius_ctx, sirius_kps, sirius_gs, d2s_mapping, s2d_mapping,
-                     max_num_bands, max_num_bands_factor, sirius_silent)
+                     max_num_bands, max_num_bands_factor, iter_tol_factor, sirius_silent)
 
     # Make sure finlalizer is called before MPI.Finalize(), because the release 
     # of some SIRIUS objects rely on MPI
@@ -171,7 +179,8 @@ function SiriusBasis(basis::SiriusBasis, kgrid::AbstractKgrid)
                      fft_size=pw_basis.fft_size, symmetries_respect_rgrid=pw_basis.symmetries_respect_rgrid,
                      use_symmetries_for_kpoint_reduction=pw_basis.use_symmetries_for_kpoint_reduction,
                      comm_kpts=pw_basis.comm_kpts, architecture=pw_basis.architecture,
-                     max_num_bands_factor=basis.max_num_bands_factor, sirius_silent=basis.is_silent)
+                     max_num_bands_factor=basis.max_num_bands_factor, iter_tol_factor=iter_tol_factor,
+                     sirius_silent=basis.is_silent)
 end
 
 
@@ -217,7 +226,6 @@ function create_sirius_params(model, Ecut, fft_size, num_bands)
     set_sirius_param(sirius_params, "settings", "smooth_initial_mag", true)
 
     #Impose DFTK FFT grid dimensions to SIRIUS for 100% compatibility
-    set_sirius_param(sirius_params, "settings", "fft_grid_size", fft_size)
     set_sirius_param(sirius_params, "settings", "fft_grid_size", fft_size)
 
     #Impose DFTK grid cutoff for the PP grid for 100% compatibility
