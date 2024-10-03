@@ -1,6 +1,9 @@
 using MPI
 using SIRIUS
 
+#TODO: go around the code, and make sure there are no hidden tmp arrays when using slices. Do the
+#      same for SIRIUS.jl
+
 """
 A standard plane-wave basis set relying on the SIRIUS library for compuationally demanding calculations.
 Note that the SiriusBasis has a PlaneWaveBasis as attribute. Both bases have the exact same parameters
