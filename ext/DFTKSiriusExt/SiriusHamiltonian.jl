@@ -13,13 +13,13 @@ mutable struct SiriusHamiltonian <: AbstractHamiltonian
 end
 
 # Construction for the SiriusHamiltonian, built based on an input density
-function SiriusHamiltonian(basis::SiriusBasis, ρ)
+@DFTK.timing function SiriusHamiltonian(basis::SiriusBasis, ρ)
     set_sirius_density(basis, ρ)
     SiriusHamiltonian(basis)
 end
 
 # Returns an Hamiltonian and corresponding energies, as necessary for the SCF
-function energy_hamiltonian(basis::SiriusBasis, ψ, occupation; ρ, kwargs...)
+@DFTK.timing function energy_hamiltonian(basis::SiriusBasis, ψ, occupation; ρ, kwargs...)
     #returns the energies and the Hamiltonian calculated by SIRIUS
 
     ham = SiriusHamiltonian(basis, ρ)
@@ -28,17 +28,17 @@ function energy_hamiltonian(basis::SiriusBasis, ψ, occupation; ρ, kwargs...)
     (; energies, ham)
 end
 
-function Hamiltonian(basis::SiriusBasis; ψ=nothing, occupation=nothing, kwargs...)
+@DFTK.timing function Hamiltonian(basis::SiriusBasis; ψ=nothing, occupation=nothing, kwargs...)
     energy_hamiltonian(basis, ψ, occupation; kwargs...).ham
 end
 
-function energy(basis::SiriusBasis, ψ, occupation; kwargs...)
+@DFTK.timing function energy(basis::SiriusBasis, ψ, occupation; kwargs...)
     energies = energy_hamiltonian(basis, ψ, occupation; kwargs...).energies
     (; energies=energies)
 end
 
 # Diagonalizes the Hamiltonian in SIRIUS and returns the eigenvalues and eigenvectors
-function sirius_diagonalize(eigensolver, H0::SiriusHamiltonian, nev_per_kpoint::Int; tol=1.0e-8, maxiter=100, kwargs...)
+@DFTK.timing function sirius_diagonalize(eigensolver, H0::SiriusHamiltonian, nev_per_kpoint::Int; tol=1.0e-8, maxiter=100, kwargs...)
 
     if nev_per_kpoint > H0.basis.max_num_bands
         error("Not enough bands available in SIRIUS. Increase 'max_num_bands_factor' when creating the SIRIUS basis.")

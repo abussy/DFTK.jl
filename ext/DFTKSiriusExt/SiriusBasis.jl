@@ -106,7 +106,7 @@ There are a few SiriusBasis specific arguments:
                  generate undesiered noise. Setting sirius_silent = true will completely silence the library.
                  Note that in case of hard calculations, some insights might be gained via the SIRIUS output
 """
-function DFTK.SiriusBasis(model::Model;
+@DFTK.timing function DFTK.SiriusBasis(model::Model;
                           Ecut::Number,
                           kgrid=nothing,
                           kshift=[0, 0, 0],
@@ -207,7 +207,7 @@ function create_sirius_params(model, Ecut, fft_size, num_bands)
     sirius_params = Dict()
     #TODO: take that value from architecture input, once GPU support is implemeted and tested
     set_sirius_param(sirius_params, "control", "processing_unit", "cpu")
-    set_sirius_param(sirius_params, "control", "verbosity", 0)
+    set_sirius_param(sirius_params, "control", "verbosity", 1)
 
     set_sirius_param(sirius_params, "parameters", "electronic_structure_method", "pseudopotential")
     set_sirius_param(sirius_params, "parameters", "use_scf_correction", "false")
@@ -295,7 +295,7 @@ end
 
 # G+k vectors are ordered differently in SIRIUS and DFTK. This function returns the mapping
 # from SIRIUS to DFTK and back. This is necessary to exchange Ψ between programs
-function get_gkvec_mapping(pw_basis::PlaneWaveBasis, sirius_kps::SIRIUS.KpointSetHandler)
+@DFTK.timing function get_gkvec_mapping(pw_basis::PlaneWaveBasis, sirius_kps::SIRIUS.KpointSetHandler)
 
     kpoints = pw_basis.kpoints
 
