@@ -1,7 +1,7 @@
 ### This file contains a collection of utility functions for SIRIUS in DFTK
 
 # Copy an input DFTK density to SIRIUS
-function set_sirius_density(basis::SiriusBasis, ρ)
+@DFTK.timing function set_sirius_density(basis::SiriusBasis, ρ)
 
     SIRIUS.set_periodic_function(basis.sirius_gs, "rho"; f_rg=total_density(ρ), size_x=size(ρ)[1], 
                                  size_y=size(ρ)[2], size_z=size(ρ)[3], offset_z=-1)
@@ -46,7 +46,7 @@ function compute_occupation(basis::SiriusBasis, eigenvalues::AbstractVector, εF
 end
 
 # Generate a guess density for a SiriusBasis
-function guess_density(basis::SiriusBasis, magnetic_moments=[],
+@DFTK.timing function guess_density(basis::SiriusBasis, magnetic_moments=[],
                        n_electrons=basis.model.n_electrons; use_dftk_guess=true)
 
     # By default, use the DFTK guess. It insures 100% compatibility with existing DFTK code and results.
@@ -142,7 +142,7 @@ function get_sirius_energy(basis::SiriusBasis, label)
 end
 
 # Compute and retrieve the Cartesian forces from SIRIUS
-function compute_forces_cart(basis::SiriusBasis, ψ, occupation; kwargs...)
+@DFTK.timing function compute_forces_cart(basis::SiriusBasis, ψ, occupation; kwargs...)
     sirius_forces = Matrix{Cdouble}(undef, 3, length(basis.model.atoms))
     SIRIUS.get_forces!(basis.sirius_gs, "total", sirius_forces)
 
@@ -160,7 +160,7 @@ function compute_forces(basis::SiriusBasis, ψ, occupation; kwargs...)
 end
 
 # Compute and retrive the stress tensor from SIRIUS
-function compute_stresses_cart(basis::SiriusBasis, ψ, occupation, eigenvalues, εF)
+@DFTK.timing function compute_stresses_cart(basis::SiriusBasis, ψ, occupation, eigenvalues, εF)
     sirius_stress = Matrix{Cdouble}(undef, 3, 3)
     SIRIUS.get_stress_tensor!(basis.sirius_gs, "total", sirius_stress)
 
