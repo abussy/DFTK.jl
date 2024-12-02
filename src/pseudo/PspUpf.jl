@@ -38,6 +38,9 @@ struct PspUpf{T,I} <: NormConservingPsp
     # UPF: `PP_NLCC`
     r2_ρcore::Vector{T}
 
+    #TODO: tmp, tes
+    r_buff::Vector{T}
+
     ## Precomputed for performance
     # (USED IN TESTS) Local potential interpolator, stored for performance.
     vloc_interp::I
@@ -143,11 +146,13 @@ function PspUpf(path; identifier=path, rcut=nothing)
     end
     r2_ρion_interp = linear_interpolation((rgrid,), r2_ρion)
     r2_ρcore_interp = linear_interpolation((rgrid,), r2_ρcore)
+ 
+    r_buff = zeros(eltype(rgrid), length(rgrid))
 
     PspUpf{eltype(rgrid),typeof(vloc_interp)}(
         Zion, lmax, rgrid, drgrid,
         vloc, r2_projs, h, r2_pswfcs, pswfc_occs, pswfc_energies, pswfc_labels,
-        r2_ρion, r2_ρcore,
+        r2_ρion, r2_ρcore, r_buff,
         vloc_interp, r2_projs_interp, r2_ρion_interp, r2_ρcore_interp,
         rcut, ircut, identifier, description
     )
@@ -187,7 +192,7 @@ end
 
 eval_psp_local_real(psp::PspUpf, r::T) where {T<:Real} = psp.vloc_interp(r)
 
-function eval_psp_local_fourier(psp::PspUpf, p::T)::T where {T<:Real}
+@timing function eval_psp_local_fourier(psp::PspUpf, p::T)::T where {T<:Real}
     # QE style C(r) = -Zerf(r)/r Coulomb tail correction used to ensure
     # exponential decay of `f` so that the Hankel transform is accurate.
     # H[Vloc(r)] = H[Vloc(r) - C(r)] + H[C(r)],
@@ -196,7 +201,8 @@ function eval_psp_local_fourier(psp::PspUpf, p::T)::T where {T<:Real}
     # C(r) = -Z/r; H[-Z/r] = -Z/p^2
     rgrid = @view psp.rgrid[1:psp.ircut]
     vloc  = @view psp.vloc[1:psp.ircut]
-    I = simpson(rgrid) do i, r
+    I = simpson(rgrid; buffer=psp.r_buff) do i, r
+    #I = simpson(rgrid) do i, r
          r * (r * vloc[i] - -psp.Zion * erf(r)) * sphericalbesselj_fast(0, p * r)
     end
     4T(π) * (I + -psp.Zion / p^2 * exp(-p^2 / T(4)))

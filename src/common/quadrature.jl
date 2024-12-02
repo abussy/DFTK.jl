@@ -37,13 +37,17 @@ The function will be called as `integrand(i, x[i])` for each integrand
 point `i` (not necessarily in order).
 """
 simpson
-@inbounds function simpson(integrand, x::AbstractVector)
+@inbounds function simpson(integrand, x::AbstractVector; buffer=nothing)
     n = length(x)
     n <= 4 && return trapezoidal(integrand, x)
     if (x[2] - x[1]) ≈ (x[3] - x[2])
         simpson_uniform(integrand, x)
     else
-        simpson_nonuniform(integrand, x)
+        if isnothing(buffer)
+            simpson_nonuniform(integrand, x)
+        else
+            simpson_nonuniform_buff(integrand, x, buffer)
+        end
     end
 end
 
@@ -97,7 +101,6 @@ end
             I += c * (dx0 + dx1)^2 / (dx0 * dx1) * integrand(i+1, x[i+1])
             I += c * (2 - dx0 / dx1) * integrand(i+2, x[i+2])
         end
-
     end
 
     if isodd(n_intervals)
@@ -106,6 +109,50 @@ end
         I += (2 * dxn^2 + 3 * dxn * dxnm1) / (6 * (dxnm1 + dxn)) * integrand(n, x[n])
         I += (dxn^2 + 3 * dxn * dxnm1) / (6 * dxnm1) * integrand(n-1, x[n-1])
         I -= dxn^3 / (6 * dxnm1 * (dxnm1 + dxn)) * integrand(n-2, x[n-2])
+    end
+
+    return I
+end
+
+@inbounds function simpson_nonuniform_buff(integrand, x::AbstractVector, buff::AbstractVector)
+    n = length(x)
+    n_intervals = n-1
+
+    istop = isodd(n_intervals) ? n-3 : n-2
+
+    Tint = eltype(integrand(1, x[1]))
+    I = zero(promote_type(eltype(x), Tint))
+
+    @fastmath @simd for i = 1:n #TODO: macros necessary?
+        buff[i] = integrand(i, x[i])
+    end
+    fview = @view buff[:] #TODO: are these views necessary?
+    xview = @view x[:]
+
+    #fvec = zeros(Tint, n)
+    #@fastmath @simd for i = 1:n #TODO: macros necessary?
+    #    fvec[i] = integrand(i, x[i])
+    #end
+    #fview = @view fvec[:] #TODO: are these views necessary?
+    #xview = @view x[:]
+
+    @fastmath @simd for i = 1:2:istop
+        dx0 = xview[i + 1] - xview[i]
+        dx1 = xview[i+2] - xview[i+1]
+        c = (dx0 + dx1) / 6
+        @inline begin
+            I += c * (2 - dx1 / dx0) * fview[i]
+            I += c * (dx0 + dx1)^2 / (dx0 * dx1) * fview[i+1]
+            I += c * (2 - dx0 / dx1) * fview[i+2]
+        end
+    end
+
+    if isodd(n_intervals)
+        dxn = xview[end] - xview[end-1]
+        dxnm1 = xview[end - 1] - xview[end-2]
+        I += (2 * dxn^2 + 3 * dxn * dxnm1) / (6 * (dxnm1 + dxn)) * fview[n]
+        I += (dxn^2 + 3 * dxn * dxnm1) / (6 * dxnm1) * fview[n-1]
+        I -= dxn^3 / (6 * dxnm1 * (dxnm1 + dxn)) * fview[n-2]
     end
 
     return I
