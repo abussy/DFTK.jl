@@ -336,10 +336,10 @@ function get_mapping(sgkvec, dgkvec, kp_coord)
     s2d = Vector{Int}(undef, length(dgkvec))
 
     for (is, sg) in enumerate(sgkvec)
+        sg_int = [Int(round(sg[i]-kp_coord[i])) for i in 1:3]
         for (id, dg) in enumerate(dgkvec)
             #In DFTK, test is on (G+k)**2 <= Ecut, but only G is stored
             #In SIRIUS (G+k) is stored, need to remove it for check
-            sg_int = [Int(round(sg[i]-kp_coord[i])) for i in 1:3]
             if sg_int == dg
                 d2s[id] = is
                 s2d[is] = id
