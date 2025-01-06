@@ -48,7 +48,7 @@ mutable struct SiriusBasis <: AbstractBasis{Float64}
 
     # The maximum number of bands SIRIUS can deal with (set at initialization)
     max_num_bands::Integer
-    max_num_bands_factor::Integer
+    max_num_bands_factor::Real
 
     # A factor by which the tolerance is multiplied upon iterative eigensolver call
     iter_tol_factor::Float64
@@ -114,7 +114,7 @@ There are a few SiriusBasis specific arguments:
                           symmetries_respect_rgrid=isnothing(fft_size),
                           use_symmetries_for_kpoint_reduction=true,
                           comm_kpts=MPI.COMM_WORLD, architecture=CPU(),
-                          max_num_bands_factor=10, iter_tol_factor=0.25,
+                          max_num_bands_factor=1.5, iter_tol_factor=0.25,
                           sirius_silent=true)
    
     # Create the PW basis on the DFTK side
@@ -132,6 +132,7 @@ There are a few SiriusBasis specific arguments:
     end
 
     # Parse Model and Basis parameters into SIRIUS parameters JSON format 
+    # TODO: is that robust for magnetic systems?
     max_num_bands = min(max_num_bands_factor*model.n_electrons, get_num_bands_ub(pw_basis))
     sirius_params = create_sirius_params(model, pw_basis.Ecut, pw_basis.fft_size, max_num_bands)
 
