@@ -337,21 +337,36 @@ function get_mapping(sgkvec, dgkvec, kp_coord)
     d2s = Vector{Int}(undef, length(sgkvec))
     s2d = Vector{Int}(undef, length(dgkvec))
 
-    for (is, sg) in enumerate(sgkvec)
-        sg_int = [Int(round(sg[i]-kp_coord[i])) for i in 1:3]
-        for (id, dg) in enumerate(dgkvec)
-            #In DFTK, test is on (G+k)**2 <= Ecut, but only G is stored
-            #In SIRIUS (G+k) is stored, need to remove it for check
-            if sg_int == dg
-                d2s[id] = is
-                s2d[is] = id
-                break
-            end
-            if id == length(dgkvec)
-                error("Missmatch in G+k vectors between DFTK and SIRIUS")
-            end
-        end
+    if length(sgkvec) != length(dgkvec)
+        error("Missmatch in G+k vectors between DFTK and SIRIUS")
     end
+
+    # Use O(n) logic for mapping using dictionaries
+    # TODO: is this really better
+    index_map = Dict([Int(round(sg[i]-kp_coord[i])) for i in 1:3] => is 
+                     for (is, sg) in enumerate(sgkvec))
+    d2s = [index_map[dg] for dg in dgkvec]
+
+    index_map = Dict(dg => id for (id, dg) in enumerate(dgkvec))
+    s2d = [index_map[[Int(round(sg[i]-kp_coord[i])) for i in 1:3]] 
+           for sg in sgkvec]
+
+
+    #for (is, sg) in enumerate(sgkvec)
+    #    #In DFTK, test is on (G+k)**2 <= Ecut, but only G is stored
+    #    #In SIRIUS (G+k) is stored, need to remove it for check
+    #    sg_int = [Int(round(sg[i]-kp_coord[i])) for i in 1:3]
+    #    for (id, dg) in enumerate(dgkvec)
+    #        if sg_int == dg
+    #            d2s[id] = is
+    #            s2d[is] = id
+    #            break
+    #        end
+    #        if id == length(dgkvec)
+    #            error("Missmatch in G+k vectors between DFTK and SIRIUS")
+    #        end
+    #    end
+    #end
 
     return d2s, s2d
 end
