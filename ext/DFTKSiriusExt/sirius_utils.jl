@@ -107,7 +107,22 @@ function mix_density(mixing, basis::SiriusBasis, Δρ; kwargs...)
 end
 
 function compute_density(basis::SiriusBasis, ψ, occupation; kwargs ...)
-    compute_density(basis.pw_basis, ψ, occupation; kwargs ...)
+    #TODO: for now, compute the density in SIRIUS, as FFTs are more efficient
+    #compute_density(basis.pw_basis, ψ, occupation; kwargs ...)
+    ρ = Array{Cdouble, 4}(undef, basis.fft_size[1], basis.fft_size[2], basis.fft_size[3],
+                          basis.model.n_spin_components)
+    SIRIUS.generate_density(basis.sirius_gs; add_core=true, transform_to_rg=true)
+    tmp  = @view ρ[:, :, :, 1]
+    SIRIUS.get_periodic_function!(basis.sirius_gs, "rho"; f_rg=tmp, size_x=basis.fft_size[1],
+                                  size_y=basis.fft_size[2], size_z=basis.fft_size[3], offset_z=-1)
+
+    if basis.model.n_spin_components == 2
+        mag = Array{Cdouble, 3}(undef, basis.fft_size[1], basis.fft_size[2], basis.fft_size[3])
+        SIRIUS.get_periodic_function!(basis.sirius_gs, "magz"; f_rg=mag, size_x=basis.fft_size[1],
+                                      size_y=basis.fft_size[2], size_z=basis.fft_size[3], offset_z=-1)
+        ρ = ρ_from_total_and_spin(tmp, mag)
+    end 
+    ρ
 end
 
 # Querry the energy from SIRIUS. Note that the terms do not have a 1 to 1 correspondance with DFTK:
