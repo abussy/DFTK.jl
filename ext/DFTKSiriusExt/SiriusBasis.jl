@@ -275,10 +275,10 @@ function create_sirius_params(model, Ecut, fft_size, num_bands)
     #Note: DFTK has lattice vectors as columns, SIRIUS as rows
     set_sirius_param(sirius_params, "unit_cell", "lattice_vectors", [model.lattice[:, i] for i in 1:3])
     set_sirius_param(sirius_params, "unit_cell", "atom_files", 
-                        Dict(String(el.symbol) => get_path(el) for el in model.atoms))
+                        Dict(String(element_symbol(el)) => get_path(el) for el in model.atoms))
 
     # Atom types in the format exepected by SIRIUS
-    atom_types = unique([String(el.symbol) for el in model.atoms])
+    atom_types = unique([String(element_symbol(el)) for el in model.atoms])
     set_sirius_param(sirius_params, "unit_cell", "atom_types", atom_types)
 
     # Atomic position in the format expected by SIRIUS. Note: initial magnitisation set at SCF start
@@ -286,7 +286,7 @@ function create_sirius_params(model, Ecut, fft_size, num_bands)
     for (iel, el) in enumerate(model.atoms)
         pos_and_mag = zeros(Float64, 6)
         pos_and_mag[1:3] = model.positions[iel]
-        append!(atoms[String(el.symbol)], [pos_and_mag])
+        append!(atoms[String(element_symbol(el))], [pos_and_mag])
     end
     set_sirius_param(sirius_params, "unit_cell", "atoms", atoms)
 
