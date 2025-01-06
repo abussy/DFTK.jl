@@ -133,7 +133,8 @@ There are a few SiriusBasis specific arguments:
 
     # Parse Model and Basis parameters into SIRIUS parameters JSON format 
     # TODO: is that robust for magnetic systems?
-    max_num_bands = min(DFTK.default_n_bands(model)*max_num_bands_factor, get_num_bands_ub(pw_basis))
+    max_num_bands = min(Int(DFTK.default_n_bands(model)*max_num_bands_factor), 
+                        get_num_bands_ub(pw_basis))
     sirius_params = create_sirius_params(model, pw_basis.Ecut, pw_basis.fft_size, max_num_bands)
 
     # Create SIRIUS simulation context
