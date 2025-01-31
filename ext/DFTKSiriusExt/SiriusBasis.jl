@@ -343,30 +343,30 @@ function get_mapping(sgkvec, dgkvec, kp_coord)
 
     # Use O(n) logic for mapping using dictionaries
     # TODO: is this really better
-    index_map = Dict([Int(round(sg[i]-kp_coord[i])) for i in 1:3] => is 
-                     for (is, sg) in enumerate(sgkvec))
-    d2s = [index_map[dg] for dg in dgkvec]
+    #index_map = Dict([Int(round(sg[i]-kp_coord[i])) for i in 1:3] => is 
+    #                 for (is, sg) in enumerate(sgkvec))
+    #d2s = [index_map[dg] for dg in dgkvec]
 
-    index_map = Dict(dg => id for (id, dg) in enumerate(dgkvec))
-    s2d = [index_map[[Int(round(sg[i]-kp_coord[i])) for i in 1:3]] 
-           for sg in sgkvec]
+    #index_map = Dict(dg => id for (id, dg) in enumerate(dgkvec))
+    #s2d = [index_map[[Int(round(sg[i]-kp_coord[i])) for i in 1:3]] 
+    #       for sg in sgkvec]
 
 
-    #for (is, sg) in enumerate(sgkvec)
-    #    #In DFTK, test is on (G+k)**2 <= Ecut, but only G is stored
-    #    #In SIRIUS (G+k) is stored, need to remove it for check
-    #    sg_int = [Int(round(sg[i]-kp_coord[i])) for i in 1:3]
-    #    for (id, dg) in enumerate(dgkvec)
-    #        if sg_int == dg
-    #            d2s[id] = is
-    #            s2d[is] = id
-    #            break
-    #        end
-    #        if id == length(dgkvec)
-    #            error("Missmatch in G+k vectors between DFTK and SIRIUS")
-    #        end
-    #    end
-    #end
+    for (is, sg) in enumerate(sgkvec)
+        #In DFTK, test is on (G+k)**2 <= Ecut, but only G is stored
+        #In SIRIUS (G+k) is stored, need to remove it for check
+        sg_int = [Int(round(sg[i]-kp_coord[i])) for i in 1:3]
+        for (id, dg) in enumerate(dgkvec)
+            if sg_int == dg
+                d2s[id] = is
+                s2d[is] = id
+                break
+            end
+            if id == length(dgkvec)
+                error("Missmatch in G+k vectors between DFTK and SIRIUS")
+            end
+        end
+    end
 
     return d2s, s2d
 end
@@ -400,3 +400,22 @@ function get_num_bands_ub(pw_basis)
 
     mpi_min(n_Gk, pw_basis.comm_kpts)
 end
+
+# TODO: for now, explicitly offload everything we need to use with SiriusBasis
+#       Ideally, in the future, define all generic function with AbstraBasis arguments
+G_vectors(basis::SiriusBasis) = basis.fft_grid.G_vectors
+G_vectors(::SiriusBasis, kpt::Kpoint) = kpt.G_vectors
+
+random_orbitals(basis::SiriusBasis, kpt::Kpoint, howmany::Integer) = 
+    random_orbitals(basis.pw_basis, kpt, howmany)
+
+PreconditionerTPA(basis::SiriusBasis, kpt::Kpoint; default_shift=1) = 
+    PreconditionerTPA(basis.pw_basis, kpt; default_shift=default_shift)
+
+
+PreconditionerNone(::SiriusBasis, ::Kpoint) = I
+
+interpolate_kpoint(data_in::AbstractVecOrMat,
+                   basis_in::SiriusBasis,  kpoint_in::Kpoint,
+                   basis_out::SiriusBasis, kpoint_out::Kpoint) =
+    interpolate_kpoint(data_in, basis_in.pw_basis, kpoint_in, basis_out.pw_basis, kpoint_out)
