@@ -26,12 +26,26 @@ function sirius_set_occupation(basis::SiriusBasis, occupation)
     end
 end
 
+# Set SIRIUS band energies
+function sirius_set_band_energies(basis::SiriusBasis, energies)
+    nkp = length(basis.kpoints)    
+    for ikp = 1:nkp
+        ik_global, ispin = ik_global_and_spin(ikp, basis)
+        SIRIUS.set_band_energies(basis.sirius_kps, ik_global, ispin, energies[ikp])
+    end
+end
+
 # Compute band occupation on the DFTK side, and update SIRIUS accordingly
 function compute_occupation(basis::SiriusBasis, eigenvalues::AbstractVector,
                             fermialg::AbstractFermiAlgorithm=default_fermialg(basis.model);
                             kwargs ...)
     occupation, εF = compute_occupation(basis.pw_basis, eigenvalues, fermialg; kwargs ...)
     #Make sure that SIRIUS is up to date
+    #TODO: this is necessary to get the energies correctly from SIRIUS, but maybe should compute
+    #      them in the DFTK side (at least the OneElectron term, possibly the Entropy too)
+    #      Question is: could we still compute the forces?
+    SIRIUS.set_num_bands(basis.sirius_ctx, length(eigenvalues[1]))
+    sirius_set_band_energies(basis, eigenvalues)
     sirius_set_occupation(basis, occupation)
     SIRIUS.set_energy_fermi(basis.sirius_kps, εF)
     return occupation, εF
@@ -106,24 +120,25 @@ function mix_density(mixing, basis::SiriusBasis, Δρ; kwargs...)
     mix_density(mixing, basis.pw_basis, Δρ; kwargs...)
 end
 
-function compute_density(basis::SiriusBasis, ψ, occupation; kwargs ...)
-    #TODO: for now, compute the density in SIRIUS, as FFTs are more efficient
-    #compute_density(basis.pw_basis, ψ, occupation; kwargs ...)
-    ρ = Array{Cdouble, 4}(undef, basis.fft_size[1], basis.fft_size[2], basis.fft_size[3],
-                          basis.model.n_spin_components)
-    SIRIUS.generate_density(basis.sirius_gs; add_core=true, transform_to_rg=true)
-    tmp  = @view ρ[:, :, :, 1]
-    SIRIUS.get_periodic_function!(basis.sirius_gs, "rho"; f_rg=tmp, size_x=basis.fft_size[1],
-                                  size_y=basis.fft_size[2], size_z=basis.fft_size[3], offset_z=-1)
-
-    if basis.model.n_spin_components == 2
-        mag = Array{Cdouble, 3}(undef, basis.fft_size[1], basis.fft_size[2], basis.fft_size[3])
-        SIRIUS.get_periodic_function!(basis.sirius_gs, "magz"; f_rg=mag, size_x=basis.fft_size[1],
-                                      size_y=basis.fft_size[2], size_z=basis.fft_size[3], offset_z=-1)
-        ρ = ρ_from_total_and_spin(tmp, mag)
-    end 
-    ρ
-end
+compute_density(basis::SiriusBasis, ψ, occupation; kwargs ...) = compute_density(basis.pw_basis, ψ, occupation; kwargs ...)
+#function compute_density(basis::SiriusBasis, ψ, occupation; kwargs ...)
+#    #TODO: for now, compute the density in SIRIUS, as FFTs are more efficient
+#    #compute_density(basis.pw_basis, ψ, occupation; kwargs ...)
+#    ρ = Array{Cdouble, 4}(undef, basis.fft_size[1], basis.fft_size[2], basis.fft_size[3],
+#                          basis.model.n_spin_components)
+#    SIRIUS.generate_density(basis.sirius_gs; add_core=true, transform_to_rg=true)
+#    tmp  = @view ρ[:, :, :, 1]
+#    SIRIUS.get_periodic_function!(basis.sirius_gs, "rho"; f_rg=tmp, size_x=basis.fft_size[1],
+#                                  size_y=basis.fft_size[2], size_z=basis.fft_size[3], offset_z=-1)
+#
+#    if basis.model.n_spin_components == 2
+#        mag = Array{Cdouble, 3}(undef, basis.fft_size[1], basis.fft_size[2], basis.fft_size[3])
+#        SIRIUS.get_periodic_function!(basis.sirius_gs, "magz"; f_rg=mag, size_x=basis.fft_size[1],
+#                                      size_y=basis.fft_size[2], size_z=basis.fft_size[3], offset_z=-1)
+#        ρ = ρ_from_total_and_spin(tmp, mag)
+#    end 
+#    ρ
+#end
 
 # Querry the energy from SIRIUS. Note that the terms do not have a 1 to 1 correspondance with DFTK:
 # The kinetic, local, non-local and psp_correction terms are gather into a single OneElectron term
