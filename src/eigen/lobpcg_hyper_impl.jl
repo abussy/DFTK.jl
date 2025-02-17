@@ -249,24 +249,19 @@ end
 
 # Randomize the columns of X if the norm is below tol
 function drop!(X::AbstractArray{T}, tol=2eps(real(T))) where {T}
-    dropped = Int[]
-    for i=1:size(X,2)
-        n = norm(@views X[:,i])
-        if n <= tol
-            X[:,i] = randn(T, size(X,1))
-            push!(dropped, i)
-        end
-    end
+    # Using array operations for GPU performance
+    norms = vec(sqrt.(sum(abs2, X; dims=1)))
+    dropped = findall(n -> n <= tol, norms)
+    @views randn!(TaskLocalRNG(), X[:, dropped])
     dropped
 end
 
 # Find X that is orthogonal, and B-orthogonal to Y, up to a tolerance tol.
 @timing "ortho! X vs Y" function ortho!(X::AbstractArray{T}, Y, BY; tol=2eps(real(T))) where {T}
     # normalize to try to cheaply improve conditioning
-    parallel_loop_over_range(1:size(X, 2)) do i
-        n = norm(@views X[:,i])
-        @views X[:,i] ./= n
-    end
+    # using array operations for GPU efficiency
+    norms = sqrt.(sum(abs2, X; dims=1))
+    X ./= norms
 
     niter = 1
     ninners = zeros(Int,0)
@@ -310,6 +305,15 @@ end
     X
 end
 
+# Computes λ = real((X' * AX) / (X' *BX)), for each column of X
+function compute_λ(X, AX, BX)
+    # using array operations for GPU performance
+    # TODO: make sure temporaries are not an issue, especially on the CPU
+    num = sum(conj(X) .* AX, dims=1)
+    den = sum(conj(X) .* BX, dims=1)
+    vec(real.(num ./ den))
+end
+
 function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
     λ_host = oftype(ones(eltype(λ), 1), λ)  # Copy to CPU for element-wise access
     if !issorted(λ_host)
@@ -323,7 +327,7 @@ function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
     (; λ=λ_host, X, AX, BX,
      residual_norms=resid_history[:, niter+1],
      residual_history=resid_history[:, 1:niter+1], n_matvec)
-end
+ end
 
 ### The algorithm is Xn+1 = rayleigh_ritz(hcat(Xn, A*Xn, Xn-Xn-1))
 ### We follow the strategy of Hetmaniuk and Lehoucq, and maintain a B-orthonormal basis Y = (X,R,P)
@@ -378,8 +382,7 @@ end
     end
     nlocked = 0
     niter = 0  # the first iteration is fake
-    λs = @views [real((X[:, n]'*AX[:, n]) / (X[:, n]'BX[:, n])) for n=1:M]
-    λs = oftype(real(X[:, 1]), λs)  # Offload to GPU if needed
+    λs = compute_λ(X, AX, BX)
     new_X  = X
     new_AX = AX
     new_BX = BX
@@ -420,9 +423,9 @@ end
         ### Compute new residuals
         @timing "Update residuals" begin
             new_R = new_AX .- new_BX .* λs'
-            @views for i = 1:size(X, 2)
-                resid_history[i + nlocked, niter+1] = norm(new_R[:, i])
-            end
+            # norms with array operations for GPU efficiency, then copied to the host
+            norms = oftype(resid_history, sqrt.(sum(abs2, new_R; dims=1)))
+            @views resid_history[1 + nlocked: size(new_R, 2) + nlocked, niter+1] .= norms[1, :]
         end
         vprintln(niter, "   ", resid_history[:, niter+1])
 
@@ -501,10 +504,9 @@ end
         end
 
         # Quick sanity check
-        for i = 1:size(X, 2)
-            @views if abs(BX[:, i]'X[:, i] - 1) >= sqrt(eps(real(eltype(X))))
-                error("LOBPCG is badly failing to keep the vectors normalized; this should never happen")
-            end
+        diffs = abs.(sum(conj(BX) .* X, dims=1) .-1)
+        if any(diffs .>= sqrt(eps(real(eltype(X)))))
+           error("LOBPCG is badly failing to keep the vectors normalized; this should never happen")
         end
 
         # Restrict all views to active
