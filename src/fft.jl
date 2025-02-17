@@ -114,6 +114,9 @@ function ifft!(f_real::AbstractArray3, fft_grid::FFTGrid,
 
     # Pad the input data
     fill!(f_real, 0)
+    #TODO: what is that, a @view ? Can we gain something by putting it directly in mul! ?
+    #      check the details of that on the nsys profile (and also fft!)
+    #      would using a work array so that mul! does not use f_real twice make a diff?
     f_real[Gvec_mapping] = f_fourier
 
     mul!(f_real, fft_grid.ipBFFT, f_real)  # perform IFFT

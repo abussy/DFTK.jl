@@ -149,6 +149,7 @@ end
             ifft!(ψ_real, H.basis, H.kpoint, ψ[:, iband]; normalize=false)
             ψ_real .*= potential
             fft!(Hψ[:, iband], H.basis, H.kpoint, ψ_real; normalize=false)  # overwrites ψ_real
+            #TODO: I feel like we could do the following once and for all, for all bands at once
             Hψ[:, iband] .+= H.fourier_op.multiplier .* ψ[:, iband]
         end
 
@@ -165,6 +166,7 @@ end
             merge!(DFTK.timer, to; tree_point=[t.name for t in DFTK.timer.timer_stack])
         end
 
+        #TODO: check nsys trace to see if that has an impact on performance
         synchronize_device(H.basis.architecture)
     end
 
