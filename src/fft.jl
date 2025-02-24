@@ -108,12 +108,14 @@ function ifft!(f_real::AbstractArray3, fft_grid::FFTGrid, f_fourier::AbstractArr
     f_real .*= fft_grid.ifft_normalization
 end
 function ifft!(f_real::AbstractArray3, fft_grid::FFTGrid,
-               Gvec_mapping::Vector{Int}, f_fourier::AbstractVector; normalize=true)
+               Gvec_mapping::AbstractVector{Int}, f_fourier::AbstractVector; normalize=true)
     @assert length(f_fourier) == length(Gvec_mapping)
     @assert size(f_real) == fft_grid.fft_size
 
     # Pad the input data
     fill!(f_real, 0)
+    #TODO: measure if CUDA.scatter is more efficient: 
+    #      CUDA.scatter!(f_fourier, f_real, Gvec_mapping)
     f_real[Gvec_mapping] = f_fourier
 
     mul!(f_real, fft_grid.ipBFFT, f_real)  # perform IFFT
@@ -137,7 +139,7 @@ function ifft(fft_grid::FFTGrid, f_fourier::AbstractArray)
     end
     f_real
 end
-function ifft(fft_grid::FFTGrid, Gvec_mapping::Vector{Int}, f_fourier::AbstractVector; kwargs...)
+function ifft(fft_grid::FFTGrid, Gvec_mapping::AbstractVector{Int}, f_fourier::AbstractVector; kwargs...)
     ifft!(similar(f_fourier, fft_grid.fft_size...), fft_grid, Gvec_mapping, f_fourier; kwargs...)
 end
 """
@@ -161,7 +163,7 @@ function fft!(f_fourier::AbstractArray3, fft_grid::FFTGrid, f_real::AbstractArra
     f_fourier .*= fft_grid.fft_normalization
 end
 function fft!(f_fourier::AbstractVector, fft_grid::FFTGrid,
-              Gvec_mapping::Vector{Int}, f_real::AbstractArray3; normalize=true)
+              Gvec_mapping::AbstractVector{Int}, f_real::AbstractArray3; normalize=true)
     @assert size(f_real) == fft_grid.fft_size
     @assert length(f_fourier) == length(Gvec_mapping)
 
@@ -192,7 +194,7 @@ end
 
 
 # TODO optimize this
-function fft(fft_grid::FFTGrid, Gvec_mapping::Vector{Int}, f_real::AbstractArray3; kwargs...)
+function fft(fft_grid::FFTGrid, Gvec_mapping::AbstractVector{Int}, f_real::AbstractArray3; kwargs...)
     fft!(similar(f_real, length(Gvec_mapping)), fft_grid, Gvec_mapping, copy(f_real); kwargs...)
 end
 

@@ -22,6 +22,7 @@ end
 struct DftHamiltonianBlock <: HamiltonianBlock
     basis::PlaneWaveBasis
     kpoint::Kpoint
+    Gvec_mapping::AbstractVector{Int}
     operators::Vector
 
     # Individual operators for easy access
@@ -48,7 +49,8 @@ function HamiltonianBlock(basis, kpoint, operators; scratch=nothing)
         scratch = @something scratch _ham_allocate_scratch(basis)
         nonlocal_op = isempty(nonlocal_ops) ? nothing : only(nonlocal_ops)
         divAgrad_op = isempty(divAgrad_ops) ? nothing : only(divAgrad_ops)
-        DftHamiltonianBlock(basis, kpoint, operators,
+        Gvec_mapping = to_device(basis.architecture, kpoint.mapping)
+        DftHamiltonianBlock(basis, kpoint, Gvec_mapping, operators,
                             only(fourier_ops), only(real_ops),
                             nonlocal_op, divAgrad_op, scratch)
     else
@@ -91,6 +93,13 @@ function LinearAlgebra.mul!(Hψ, H::Hamiltonian, ψ)
 end
 # need `deepcopy` here to copy the elements of the array of arrays ψ (not just pointers)
 Base.:*(H::Hamiltonian, ψ) = mul!(deepcopy(ψ), H, ψ)
+
+# Speciacl case of FFTs for the DftHamiltonianBlock, where the G-vector mapping is on the GPU
+ifft!(f_real::AbstractArray3, H::DftHamiltonianBlock, f_fourier::AbstractVector; normalize=true) =
+    ifft!(f_real, H.basis.fft_grid, H.Gvec_mapping, f_fourier; normalize=normalize)
+
+fft!(f_fourier::AbstractVector, H::DftHamiltonianBlock, f_real::AbstractArray3; normalize=true) = 
+    fft!(f_fourier, H.basis.fft_grid, H.Gvec_mapping, f_real; normalize=normalize)
 
 # Loop through bands, IFFT to get ψ in real space, loop through terms, FFT and accumulate into Hψ
 # For the common DftHamiltonianBlock there is an optimized version below
@@ -145,11 +154,10 @@ end
         to = TimerOutput()  # Thread-local timer output
         ψ_real = storage.ψ_reals
 
-        @timeit to "local+kinetic" begin
-            ifft!(ψ_real, H.basis, H.kpoint, ψ[:, iband]; normalize=false)
+        @timeit to "local+kinetic 1" begin
+            ifft!(ψ_real, H, ψ[:, iband]; normalize=false)
             ψ_real .*= potential
-            fft!(Hψ[:, iband], H.basis, H.kpoint, ψ_real; normalize=false)  # overwrites ψ_real
-            Hψ[:, iband] .+= H.fourier_op.multiplier .* ψ[:, iband]
+            fft!(Hψ[:, iband], H, ψ_real; normalize=false)  # overwrites ψ_real
         end
 
         if have_divAgrad
@@ -165,7 +173,14 @@ end
             merge!(DFTK.timer, to; tree_point=[t.name for t in DFTK.timer.timer_stack])
         end
 
+        #TODO: measure impact of removing that
         synchronize_device(H.basis.architecture)
+    end
+
+    # Apply second part of local+kintetic term as a single array operation (GPU efficiency)
+    #TODO: also faster of the CPU?
+    @timing "local+kinetic 2" begin
+        Hψ[:, 1:n_bands] .+= H.fourier_op.multiplier .* ψ
     end
 
     # Apply the nonlocal operator.
