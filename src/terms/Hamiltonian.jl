@@ -154,6 +154,9 @@ end
         to = TimerOutput()  # Thread-local timer output
         ψ_real = storage.ψ_reals
 
+        #TODO: measure the impact of each modification separately, in order to decide 
+        #      whether these changes should take place elsewhere
+        #      Also, maybe some changes are not worth it
         @timeit to "local+kinetic 1" begin
             ifft!(ψ_real, H, ψ[:, iband]; normalize=false)
             ψ_real .*= potential

@@ -286,6 +286,10 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
         #      ̂u_{Sk}(G) = e^{-i G \cdot τ} ̂u_k(S^{-1} G)
         # equivalently
         #     ρ ̂_{Sk}(G) = e^{-i G \cdot τ} ̂ρ_k(S^{-1} G)
+
+        #TODO: could we create a mapping Vector{Int} on the GPU, and use map() to fill it?
+        #      it would certainly be easier than a proper kernel
+
         invS = Mat3{Int}(inv(symop.S))
         for (ig, G) in enumerate(G_vectors_generator(basis.fft_size))
             igired = index_G_vectors(basis, invS * G)

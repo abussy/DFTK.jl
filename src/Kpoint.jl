@@ -34,6 +34,8 @@ function Kpoint(spin::Integer, coordinate::AbstractVector{<:Real},
     end
     Gvecs_k = to_device(architecture, Gvecs_k)
 
+    #TODO: does mapping_inv really need to be a Dict ?!? Can't we simply use an array?
+    #      Issue is probably fir the ifull where there is no iball
     mapping_inv = Dict(ifull => iball for (iball, ifull) in enumerate(mapping))
     Kpoint(spin, k, Gvecs_k, mapping, mapping_inv)
 end

@@ -33,6 +33,8 @@ using an optional `occupation_threshold`. By default all occupation numbers are 
     storages = parallel_loop_over_range(range; allocate_local_storage) do kn, storage
         (ik, n) = kn
         kpt = basis.kpoints[ik]
+        #TODO: should we also use a GPU resident Gvec mapping? How much difference does it make?
+        #      if big, then should store GPU mapping with Kpoint, and not HamiltonianBlock
         ifft!(storage.ψnk_real, basis, kpt, ψ[ik][:, n]; normalize=false)
         storage.ρ[:, :, :, kpt.spin] .+= (occupation[ik][n] .* basis.kweights[ik]
                                           .* (basis.fft_grid.ifft_normalization)^2
