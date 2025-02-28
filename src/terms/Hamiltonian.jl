@@ -154,6 +154,9 @@ end
         to = TimerOutput()  # Thread-local timer output
         ψ_real = storage.ψ_reals
 
+        #TODO: should we try batched FFTs to do all bands at once? Maybe good on the GPU
+        #      Do everything local first (create plans here). See chatGPT
+
         #TODO: measure the impact of each modification separately, in order to decide 
         #      whether these changes should take place elsewhere
         #      Also, maybe some changes are not worth it
