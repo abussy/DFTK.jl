@@ -366,6 +366,12 @@ function build_fft_plans!(tmp::AbstractArray{Complex{T}}) where {T<:Union{Float3
     ipFFT, opFFT, inv(ipFFT).p, inv(opFFT).p
 end
 
+# TEST: build batched FFT plans
+function build_batched_ifft_plans!(tmp::Array{Complex{Float64}}; dim=1)
+    ipFFT = FFTW.plan_fft!(tmp, dim; flags=FFTW.MEASURE)
+    ipFFT, inv(ipFFT).p
+end
+
 # TODO Some grid sizes are broken in the generic FFT implementation
 # in FourierTransforms, for more details see workarounds/fft_generic.jl
 default_primes(::Type{Float32}) = (2, 3, 5)

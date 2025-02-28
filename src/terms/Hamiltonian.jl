@@ -140,6 +140,68 @@ fft!(f_fourier::AbstractVector, H::DftHamiltonianBlock, f_real::AbstractArray3; 
 end
 
 # Fast version, specialized on DFT models. Minimizes the number of FFTs and allocations
+#@views @timing "DftHamiltonian multiplication" function LinearAlgebra.mul!(Hψ::AbstractArray,
+#                                                                           H::DftHamiltonianBlock,
+#                                                                           ψ::AbstractArray)
+#    n_bands = size(ψ, 2)
+#    iszero(n_bands) && return Hψ  # Nothing to do if ψ empty
+#    have_divAgrad = !isnothing(H.divAgrad_op)
+#
+#    # Notice that we use unnormalized plans for extra speed
+#    potential = H.local_op.potential / prod(H.basis.fft_size)
+#
+#    parallel_loop_over_range(1:n_bands, H.scratch) do iband, storage
+#        to = TimerOutput()  # Thread-local timer output
+#        ψ_real = storage.ψ_reals
+#
+#        #TODO: should we try batched FFTs to do all bands at once? Maybe good on the GPU
+#        #      Do everything local first (create plans here). See chatGPT
+#
+#        #TODO: measure the impact of each modification separately, in order to decide 
+#        #      whether these changes should take place elsewhere
+#        #      Also, maybe some changes are not worth it
+#        @timeit to "local+kinetic 1" begin
+#            ifft!(ψ_real, H, ψ[:, iband]; normalize=false)
+#            ψ_real .*= potential
+#            fft!(Hψ[:, iband], H, ψ_real; normalize=false)  # overwrites ψ_real
+#        end
+#
+#        if have_divAgrad
+#            @timeit to "divAgrad" begin
+#                apply!((; fourier=Hψ[:, iband], real=nothing),
+#                       H.divAgrad_op,
+#                       (; fourier=ψ[:, iband], real=nothing);
+#                       ψ_scratch=ψ_real)
+#            end
+#        end
+#
+#        if Threads.threadid() == 1
+#            merge!(DFTK.timer, to; tree_point=[t.name for t in DFTK.timer.timer_stack])
+#        end
+#
+#        #TODO: measure impact of removing that
+#        synchronize_device(H.basis.architecture)
+#    end
+#
+#    # Apply second part of local+kintetic term as a single array operation (GPU efficiency)
+#    #TODO: also faster of the CPU?
+#    @timing "local+kinetic 2" begin
+#        Hψ[:, 1:n_bands] .+= H.fourier_op.multiplier .* ψ
+#    end
+#
+#    # Apply the nonlocal operator.
+#    if !isnothing(H.nonlocal_op)
+#        @timing "nonlocal" begin
+#            apply!((; fourier=Hψ, real=nothing),
+#                   H.nonlocal_op,
+#                   (; fourier=ψ, real=nothing))
+#        end
+#    end
+#
+#    Hψ
+#end
+
+#TEST version with batched FFTs
 @views @timing "DftHamiltonian multiplication" function LinearAlgebra.mul!(Hψ::AbstractArray,
                                                                            H::DftHamiltonianBlock,
                                                                            ψ::AbstractArray)
@@ -150,44 +212,60 @@ end
     # Notice that we use unnormalized plans for extra speed
     potential = H.local_op.potential / prod(H.basis.fft_size)
 
-    parallel_loop_over_range(1:n_bands, H.scratch) do iband, storage
-        to = TimerOutput()  # Thread-local timer output
-        ψ_real = storage.ψ_reals
+    # Creating FFT plans. Creating plans everytime might be expensive. Maybe better to batch
+    # 4 at a time, or so?
+    ψ_real = zeros(eltype(ψ), prod(H.basis.fft_size), n_bands)
+    ipFFT, ipBFFT = build_batched_ifft_plans!(ψ_real; dim=1)
 
-        #TODO: should we try batched FFTs to do all bands at once? Maybe good on the GPU
-        #      Do everything local first (create plans here). See chatGPT
+    # Note: this is currently giving wrong results
+    # FFT over all bands at once
+    ψ_real[H.kpoint.mapping, :] .=  ψ
+    mul!(ψ_real, ipBFFT, ψ_real)
 
-        #TODO: measure the impact of each modification separately, in order to decide 
-        #      whether these changes should take place elsewhere
-        #      Also, maybe some changes are not worth it
-        @timeit to "local+kinetic 1" begin
-            ifft!(ψ_real, H, ψ[:, iband]; normalize=false)
-            ψ_real .*= potential
-            fft!(Hψ[:, iband], H, ψ_real; normalize=false)  # overwrites ψ_real
-        end
+    ψ_real .*= vec(potential)
+    mul!(ψ_real, ipFFT, ψ_real)
+    Hψ .= ψ_real[H.kpoint.mapping, :]
 
-        if have_divAgrad
-            @timeit to "divAgrad" begin
-                apply!((; fourier=Hψ[:, iband], real=nothing),
-                       H.divAgrad_op,
-                       (; fourier=ψ[:, iband], real=nothing);
-                       ψ_scratch=ψ_real)
-            end
-        end
+    Hψ .+= H.fourier_op.multiplier .* ψ
 
-        if Threads.threadid() == 1
-            merge!(DFTK.timer, to; tree_point=[t.name for t in DFTK.timer.timer_stack])
-        end
+    #parallel_loop_over_range(1:n_bands, H.scratch) do iband, storage
+    #    to = TimerOutput()  # Thread-local timer output
+    #    ψ_real = storage.ψ_reals
 
-        #TODO: measure impact of removing that
-        synchronize_device(H.basis.architecture)
-    end
+    #    #TODO: should we try batched FFTs to do all bands at once? Maybe good on the GPU
+    #    #      Do everything local first (create plans here). See chatGPT
 
-    # Apply second part of local+kintetic term as a single array operation (GPU efficiency)
-    #TODO: also faster of the CPU?
-    @timing "local+kinetic 2" begin
-        Hψ[:, 1:n_bands] .+= H.fourier_op.multiplier .* ψ
-    end
+    #    #TODO: measure the impact of each modification separately, in order to decide 
+    #    #      whether these changes should take place elsewhere
+    #    #      Also, maybe some changes are not worth it
+    #    @timeit to "local+kinetic 1" begin
+    #        ifft!(ψ_real, H, ψ[:, iband]; normalize=false)
+    #        ψ_real .*= potential
+    #        fft!(Hψ[:, iband], H, ψ_real; normalize=false)  # overwrites ψ_real
+    #    end
+
+    #    if have_divAgrad
+    #        @timeit to "divAgrad" begin
+    #            apply!((; fourier=Hψ[:, iband], real=nothing),
+    #                   H.divAgrad_op,
+    #                   (; fourier=ψ[:, iband], real=nothing);
+    #                   ψ_scratch=ψ_real)
+    #        end
+    #    end
+
+    #    if Threads.threadid() == 1
+    #        merge!(DFTK.timer, to; tree_point=[t.name for t in DFTK.timer.timer_stack])
+    #    end
+
+    #    #TODO: measure impact of removing that
+    #    synchronize_device(H.basis.architecture)
+    #end
+
+    ## Apply second part of local+kintetic term as a single array operation (GPU efficiency)
+    ##TODO: also faster of the CPU?
+    #@timing "local+kinetic 2" begin
+    #    Hψ[:, 1:n_bands] .+= H.fourier_op.multiplier .* ψ
+    #end
 
     # Apply the nonlocal operator.
     if !isnothing(H.nonlocal_op)
