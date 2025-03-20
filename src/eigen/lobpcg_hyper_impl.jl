@@ -255,10 +255,14 @@ normest(M) = maximum(abs.(diag(M))) + norm(M - Diagonal(diag(M)))
     (; X, nchol, growth_factor)
 end
 
+# Calculate the norms of the columns of an array X
+function colnorms(X::AbstractArray{T}) where{T}
+    vec(sqrt.(sum(abs2, X; dims=1)))
+end
+
 # Randomize the columns of X if the norm is below tol
 function drop!(X::AbstractArray{T}, tol=2eps(real(T))) where {T}
-    norms = vec(sqrt.(sum(abs2, X; dims=1)))
-    dropped = findall(n -> n <= tol, norms)
+    dropped = findall(n -> n <= tol, colnorms(X))
     @views randn!(TaskLocalRNG(), X[:, dropped])
     dropped
 end
@@ -266,8 +270,7 @@ end
 # Find X that is orthogonal, and B-orthogonal to Y, up to a tolerance tol.
 @timing "ortho! X vs Y" function ortho!(X::AbstractArray{T}, Y, BY; tol=2eps(real(T))) where {T}
     # normalize to try to cheaply improve conditioning
-    norms = sqrt.(sum(abs2, X; dims=1))
-    X ./= norms
+    X ./= colnorms(X)'
 
     niter = 1
     ninners = zeros(Int,0)
@@ -429,7 +432,7 @@ end
         ### Compute new residuals
         @timing "Update residuals" begin
             new_R = new_AX .- new_BX .* λs'
-            norms = to_cpu(sqrt.(sum(abs2, new_R; dims=1)))
+            norms = to_cpu(colnorms(new_R))
             @views resid_history[1 + nlocked: size(new_R, 2) + nlocked, niter+1] .= norms[1, :]
         end
         vprintln(niter, "   ", resid_history[:, niter+1])
