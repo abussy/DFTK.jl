@@ -321,7 +321,7 @@ function compute_λ(X, AX, BX)
 end
 
 function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
-    λ_host = oftype(ones(eltype(λ), 1), λ)  # Copy to CPU for element-wise access
+    λ_host = to_cpu(λ)  # Copy to CPU for element-wise access
     if !issorted(λ_host)
         p = sortperm(λ_host)
         λ_host = λ_host[p]
@@ -333,7 +333,7 @@ function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
     (; λ=λ_host, X, AX, BX,
      residual_norms=resid_history[:, niter+1],
      residual_history=resid_history[:, 1:niter+1], n_matvec)
- end
+end
 
 ### The algorithm is Xn+1 = rayleigh_ritz(hcat(Xn, A*Xn, Xn-Xn-1))
 ### We follow the strategy of Hetmaniuk and Lehoucq, and maintain a B-orthonormal basis Y = (X,R,P)
@@ -429,7 +429,7 @@ function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
         ### Compute new residuals
         @timing "Update residuals" begin
             new_R = new_AX .- new_BX .* λs'
-            norms = oftype(resid_history, sqrt.(sum(abs2, new_R; dims=1)))
+            norms = to_cpu(sqrt.(sum(abs2, new_R; dims=1)))
             @views resid_history[1 + nlocked: size(new_R, 2) + nlocked, niter+1] .= norms[1, :]
         end
         vprintln(niter, "   ", resid_history[:, niter+1])
