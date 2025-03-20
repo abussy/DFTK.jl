@@ -433,7 +433,7 @@ end
         @timing "Update residuals" begin
             new_R = new_AX .- new_BX .* λs'
             norms = to_cpu(colnorms(new_R))
-            @views resid_history[1 + nlocked: size(new_R, 2) + nlocked, niter+1] .= norms[1, :]
+            @views resid_history[1 + nlocked: size(new_R, 2) + nlocked, niter+1] .= norms[:]
         end
         vprintln(niter, "   ", resid_history[:, niter+1])
 
