@@ -33,6 +33,14 @@
 # other eigenvectors (which is not the case in many - all ? - other
 # implementations)
 
+# - The massive parallelism of the GPU can only be fully expoloited when
+# operating on whole arrays. For performance reasons, one should avoid
+# explicitly looping over columns or element. For example, computing
+# the norms of the columns of an array A should be dones as:
+# norms = vec(sqrt.(sum(abs2, A; dims=1)))
+# Rather than the more eloquant:
+# norms = norm.(eachcol(A)) 
+
 
 ## TODO micro-optimization of buffer reuse
 ## TODO write a version that doesn't assume that B is well-conditioned, and doesn't reuse B applications at all
@@ -249,7 +257,6 @@ end
 
 # Randomize the columns of X if the norm is below tol
 function drop!(X::AbstractArray{T}, tol=2eps(real(T))) where {T}
-    # Using array operations for GPU performance
     norms = vec(sqrt.(sum(abs2, X; dims=1)))
     dropped = findall(n -> n <= tol, norms)
     @views randn!(TaskLocalRNG(), X[:, dropped])
@@ -259,7 +266,6 @@ end
 # Find X that is orthogonal, and B-orthogonal to Y, up to a tolerance tol.
 @timing "ortho! X vs Y" function ortho!(X::AbstractArray{T}, Y, BY; tol=2eps(real(T))) where {T}
     # normalize to try to cheaply improve conditioning
-    # using array operations for GPU efficiency
     norms = sqrt.(sum(abs2, X; dims=1))
     X ./= norms
 
@@ -307,8 +313,8 @@ end
 
 # Computes λ = real((X' * AX) / (X' *BX)), for each column of X
 function compute_λ(X, AX, BX)
-    # using array operations for GPU performance
     # TODO: make sure temporaries are not an issue, especially on the CPU
+    #       but, the dimension of the tmps are nbands x nbands right? So never that big...
     num = sum(conj(X) .* AX, dims=1)
     den = sum(conj(X) .* BX, dims=1)
     vec(real.(num ./ den))
@@ -423,7 +429,6 @@ function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
         ### Compute new residuals
         @timing "Update residuals" begin
             new_R = new_AX .- new_BX .* λs'
-            # norms with array operations for GPU efficiency, then copied to the host
             norms = oftype(resid_history, sqrt.(sum(abs2, new_R; dims=1)))
             @views resid_history[1 + nlocked: size(new_R, 2) + nlocked, niter+1] .= norms[1, :]
         end
