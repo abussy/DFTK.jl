@@ -108,7 +108,7 @@ function interpolate_kpoint(data_in::AbstractVecOrMat,
 
     max_nG = max(length(G_vectors(basis_in)), length(G_vectors(basis_out)))
     tmp = similar(data_in, max_nG, n_bands) .= 0
-    
+
     tmp[kpoint_in.mapping, :] .= data_in
     data_out .= @view tmp[kpoint_out.mapping, :]
     ortho_qr(data_out)  # Re-orthogonalize and renormalize
