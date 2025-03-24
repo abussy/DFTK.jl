@@ -39,7 +39,7 @@
 # the norms of the columns of an array A should be dones as:
 # norms = vec(sqrt.(sum(abs2, A; dims=1)))
 # Rather than the more eloquant:
-# norms = norm.(eachcol(A)) 
+# norms = norm.(eachcol(A))
 
 
 ## TODO micro-optimization of buffer reuse
@@ -314,15 +314,6 @@ end
     X
 end
 
-# Computes λ = real((X' * AX) / (X' *BX)), for each column of X
-function compute_λ(X, AX, BX)
-    # TODO: make sure temporaries are not an issue, especially on the CPU
-    #       but, the dimension of the tmps are nbands x nbands right? So never that big...
-    num = sum(conj(X) .* AX, dims=1)
-    den = sum(conj(X) .* BX, dims=1)
-    vec(real.(num ./ den))
-end
-
 function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
     λ_host = to_cpu(λ)  # Copy to CPU for element-wise access
     if !issorted(λ_host)
@@ -391,7 +382,8 @@ end
     end
     nlocked = 0
     niter = 0  # the first iteration is fake
-    λs = compute_λ(X, AX, BX)
+    λs = @views [real((X[:, n]'*AX[:, n]) / (X[:, n]'BX[:, n])) for n=1:M]
+    λs = oftype(real(X[:, 1]), λs)  # Offload to GPU if needed
     new_X  = X
     new_AX = AX
     new_BX = BX
