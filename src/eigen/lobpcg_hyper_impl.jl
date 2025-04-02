@@ -33,6 +33,7 @@
 # other eigenvectors (which is not the case in many - all ? - other
 # implementations)
 
+#TODO: reformulate this once we have a CUDA extension
 # - The massive parallelism of the GPU can only be fully expoloited when
 # operating on whole arrays. For performance reasons, one should avoid
 # explicitly looping over columns or element. For example, computing
@@ -256,13 +257,15 @@ normest(M) = maximum(abs.(diag(M))) + norm(M - Diagonal(diag(M)))
 end
 
 # Calculate the norms of the columns of an array X
-function colnorms(X::AbstractArray{T}) where{T}
+function columwise_norms(X::AbstractArray{T}) where{T}
+    #TODO: measure gain of using this on CPU and GPU, for both version
+    #      it is likely that this is better for the CPU as well
     vec(sqrt.(sum(abs2, X; dims=1)))
 end
 
 # Randomize the columns of X if the norm is below tol
 function drop!(X::AbstractArray{T}, tol=2eps(real(T))) where {T}
-    dropped = findall(n -> n <= tol, colnorms(X))
+    dropped = findall(n -> n <= tol, columwise_norms(X))
     @views randn!(TaskLocalRNG(), X[:, dropped])
     dropped
 end
@@ -270,7 +273,7 @@ end
 # Find X that is orthogonal, and B-orthogonal to Y, up to a tolerance tol.
 @timing "ortho! X vs Y" function ortho!(X::AbstractArray{T}, Y, BY; tol=2eps(real(T))) where {T}
     # normalize to try to cheaply improve conditioning
-    X ./= colnorms(X)'
+    X ./= columwise_norms(X)'
 
     niter = 1
     ninners = zeros(Int,0)
@@ -315,6 +318,7 @@ end
 end
 
 function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
+    #TODO: write a LOBPCG local version of to_cpu (for eventual splitting)
     λ_host = to_cpu(λ)  # Copy to CPU for element-wise access
     if !issorted(λ_host)
         p = sortperm(λ_host)
@@ -327,6 +331,12 @@ function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
     (; λ=λ_host, X, AX, BX,
      residual_norms=resid_history[:, niter+1],
      residual_history=resid_history[:, 1:niter+1], n_matvec)
+end
+
+# Computes λ = real((X' * AX) / (X' *BX)), for each column of X
+function compute_λ(X, AX, BX)
+    λs = @views [real((X[:, n]'*AX[:, n]) / (X[:, n]'BX[:, n])) for n=1:size(X, 2)]
+    oftype(real(X[:, 1]), λs)  # Offload to GPU if needed
 end
 
 ### The algorithm is Xn+1 = rayleigh_ritz(hcat(Xn, A*Xn, Xn-Xn-1))
@@ -382,8 +392,7 @@ end
     end
     nlocked = 0
     niter = 0  # the first iteration is fake
-    λs = @views [real((X[:, n]'*AX[:, n]) / (X[:, n]'BX[:, n])) for n=1:M]
-    λs = oftype(real(X[:, 1]), λs)  # Offload to GPU if needed
+    λs = compute_λ(X, AX, BX)
     new_X  = X
     new_AX = AX
     new_BX = BX
@@ -424,7 +433,7 @@ end
         ### Compute new residuals
         @timing "Update residuals" begin
             new_R = new_AX .- new_BX .* λs'
-            norms = to_cpu(colnorms(new_R))
+            norms = to_cpu(columwise_norms(new_R))
             @views resid_history[1 + nlocked: size(new_R, 2) + nlocked, niter+1] .= norms[:]
         end
         vprintln(niter, "   ", resid_history[:, niter+1])
@@ -504,7 +513,8 @@ end
         end
 
         # Quick sanity check
-        diffs = abs.(sum(conj(BX) .* X, dims=1) .-1)
+        #TODO: move that into a function that can be put in CUDA ext
+        diffs = abs.(diag_prod(BX, X) .-1)
         if any(diffs .>= sqrt(eps(real(eltype(X)))))
            error("LOBPCG is badly failing to keep the vectors normalized; this should never happen")
         end

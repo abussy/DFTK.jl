@@ -6,6 +6,8 @@ using DftFunctionals
 using DFTK
 using Libxc
 
+include("lobpcg.jl")
+
 DFTK.synchronize_device(::GPU{<:CUDA.CuArray}) = CUDA.synchronize()
 
 for fun in (:potential_terms, :kernel_terms)
