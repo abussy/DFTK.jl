@@ -1,15 +1,12 @@
 #TODO: description of file
 
-function compute_λ(X::CUDA.CuArray{T}, AX::CUDA.CuArray{T}, BX::CUDA.CuArray{T}) where {T}
+function DFTK.compute_λ(X::CUDA.CuArray{T}, AX::CUDA.CuArray{T}, BX::CUDA.CuArray{T}) where {T}
     num = sum(conj(X) .* AX, dims=1)
     den = sum(conj(X) .* BX, dims=1)
     vec(real.(num ./ den))
 end
 
-function diag_prod(A::CUDA.CuArray{T}, B::CUDA.CuArray{T}; diag=nothing) where {T}
-
-    #TODO: use a CPU friendly thing here, and put this in CUDA ext
-    #TODO: measure is any gains using a special case for ones, only relevant on GPU
+function DFTK.diag_prod(A::CUDA.CuArray{T}, B::CUDA.CuArray{T}; diag=nothing) where {T}
     @assert size(A) == size(B)
     if isnothing(diag)
         res = sum(conj(A) .* B; dims=1)
@@ -20,7 +17,7 @@ function diag_prod(A::CUDA.CuArray{T}, B::CUDA.CuArray{T}; diag=nothing) where {
     res
 end
 
-function ldiv!(Y::CUDA.CuArray{T}, P::PreconditionerTPA, R::CUDA.CuArray{T}) where {T}
+function DFTK.ldiv!(Y::CUDA.CuArray{T}, P::PreconditionerTPA, R::CUDA.CuArray{T}) where {T}
     if P.mean_kin === nothing
         ldiv!(Y, Diagonal(P.kin .+ P.default_shift), R)
     else
@@ -29,7 +26,7 @@ function ldiv!(Y::CUDA.CuArray{T}, P::PreconditionerTPA, R::CUDA.CuArray{T}) whe
     Y
 end
 
-function mul!(Y::CUDA.CuArray{T}, P::PreconditionerTPA, R::CUDA.CuArray{T}) where {T}
+function DFTK.mul!(Y::CUDA.CuArray{T}, P::PreconditionerTPA, R::CUDA.CuArray{T}) where {T}
     if P.mean_kin === nothing
         mul!(Y, Diagonal(P.kin .+ P.default_shift), R)
     else
