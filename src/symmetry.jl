@@ -268,9 +268,21 @@ function apply_symop(symop::SymOp, basis, ρin; kwargs...)
     symmetrize_ρ(basis, ρin; symmetries=[symop], kwargs...)
 end
 
+@inline function get_ρval(ρ::AbstractArray{T}, idx) where {T}
+    #TODO: might not be good on the GPU. Alternative could be to add some zero
+    #      padding on the density array, and have index_G_vector point to it
+    #      instead
+    if isnothing(idx)
+        return zero(T)
+    else
+        return @inbounds ρ[idx]
+    end
+end
+
 # Accumulates the symmetrized versions of the density ρin into ρout (in Fourier space).
 # No normalization is performed
 function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
+    indices = collect(1:prod(basis.fft_size))
     for symop in symmetries
         # Common special case, where ρin does not need to be processed
         if isone(symop)
@@ -287,17 +299,24 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
         # equivalently
         #     ρ ̂_{Sk}(G) = e^{-i G \cdot τ} ̂ρ_k(S^{-1} G)
         invS = Mat3{Int}(inv(symop.S))
-        for (ig, G) in enumerate(G_vectors_generator(basis.fft_size))
-            igired = index_G_vectors(basis, invS * G)
-            isnothing(igired) && continue
-
-            if iszero(symop.τ)
-                @inbounds ρaccu[ig] += ρin[igired]
-            else
-                factor = cis2pi(-T(dot(G, symop.τ)))
-                @inbounds ρaccu[ig] += factor * ρin[igired]
-            end
+        map!(ρaccu, indices) do iG
+            #TODO: maybe can do even simpler, by sticking closer to the original loop
+            #      incide the map. Also, not 100% sure how index_G_vectors behaves
+            #      on the GPU. To be tested. Maybe it will be very  simple indeed
+            factor = cis2pi(-T(dot(G_vectors(basis)[iG], symop.τ)))
+            ρaccu[iG] + factor*get_ρval(ρin, index_G_vectors(basis, invS * G_vectors(basis)[iG]))
         end
+        #for (ig, G) in enumerate(G_vectors_generator(basis.fft_size))
+        #    igired = index_G_vectors(basis, invS * G)
+        #    #isnothing(igired) && continue
+
+        #    if iszero(symop.τ)
+        #        @inbounds ρaccu[ig] += get_ρval(ρin, igired)
+        #    else
+        #        factor = cis2pi(-T(dot(G, symop.τ)))
+        #        @inbounds ρaccu[ig] += factor * get_ρval(ρin, igired)
+        #    end
+        #end
     end  # symop
     ρaccu
 end
