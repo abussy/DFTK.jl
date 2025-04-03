@@ -1,4 +1,9 @@
-#TODO: description of file
+### GPU-specific implementations of functions called during LOBPCG
+# The massive parallelism of the GPU can only be fully exploited when
+# operating on whole arrays. For performance reasons, one should avoid
+# explicitly looping over columns or elements. This approach is not
+# necessarily the most performant on CPU, as the allocation of large
+# temporary arrays hurts cache locality. It is also harder to read.
 
 function DFTK.compute_λ(X::CUDA.CuArray{T}, AX::CUDA.CuArray{T}, BX::CUDA.CuArray{T}) where {T}
     num = sum(conj(X) .* AX, dims=1)

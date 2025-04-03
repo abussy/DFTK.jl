@@ -33,14 +33,8 @@
 # other eigenvectors (which is not the case in many - all ? - other
 # implementations)
 
-#TODO: reformulate this once we have a CUDA extension
-# - The massive parallelism of the GPU can only be fully expoloited when
-# operating on whole arrays. For performance reasons, one should avoid
-# explicitly looping over columns or element. For example, computing
-# the norms of the columns of an array A should be dones as:
-# norms = vec(sqrt.(sum(abs2, A; dims=1)))
-# Rather than the more eloquant:
-# norms = norm.(eachcol(A))
+# - Some functions are reimplemented in a GPU optimized way as part of
+# the DFTK CUDA Extension (ext/DFTKCUDAExt/lobpcg.jl).
 
 
 ## TODO micro-optimization of buffer reuse
@@ -56,6 +50,12 @@ using LinearAlgebra
 import LinearAlgebra: BlasFloat
 import Base: *
 import Base.size, Base.adjoint, Base.Array
+
+"""
+Transfer an array from a device (typically a GPU) to the CPU, local definition.
+"""
+to_cpu(x::AbstractArray) = Array(x)
+to_cpu(x::Array) = x
 
 """
 Simple wrapper to represent a matrix formed by the concatenation of column blocks:
@@ -256,8 +256,8 @@ normest(M) = maximum(abs, diag(M)) + norm(M - Diagonal(diag(M)))
     (; X, nchol, growth_factor)
 end
 
-# Calculate the norms of the columns of an array X
-function columwise_norms(X::AbstractArray{T}) where{T}
+# Calculate the norms of the columns of an array
+function columnwise_norms(X::AbstractArray{T}) where{T}
     #TODO: measure gain of using this on CPU and GPU, for both version
     #      it is likely that this is better for the CPU as well
     vec(sqrt.(sum(abs2, X; dims=1)))
@@ -265,7 +265,7 @@ end
 
 # Randomize the columns of X if the norm is below tol
 function drop!(X::AbstractArray{T}, tol=2eps(real(T))) where {T}
-    dropped = findall(n -> n <= tol, columwise_norms(X))
+    dropped = findall(n -> n <= tol, columnwise_norms(X))
     @views randn!(TaskLocalRNG(), X[:, dropped])
     dropped
 end
@@ -273,7 +273,7 @@ end
 # Find X that is orthogonal, and B-orthogonal to Y, up to a tolerance tol.
 @timing "ortho! X vs Y" function ortho!(X::AbstractArray{T}, Y, BY; tol=2eps(real(T))) where {T}
     # normalize to try to cheaply improve conditioning
-    X ./= columwise_norms(X)'
+    X ./= columnwise_norms(X)'
 
     niter = 1
     ninners = zeros(Int,0)
@@ -318,7 +318,6 @@ end
 end
 
 function final_retval(X, AX, BX, λ, resid_history, niter, n_matvec)
-    #TODO: write a LOBPCG local version of to_cpu (for eventual splitting)
     λ_host = to_cpu(λ)  # Copy to CPU for element-wise access
     if !issorted(λ_host)
         p = sortperm(λ_host)
@@ -433,7 +432,7 @@ end
         ### Compute new residuals
         @timing "Update residuals" begin
             new_R = new_AX .- new_BX .* λs'
-            norms = to_cpu(columwise_norms(new_R))
+            norms = to_cpu(columnwise_norms(new_R))
             @views resid_history[1 + nlocked: size(new_R, 2) + nlocked, niter+1] .= norms[:]
         end
         vprintln(niter, "   ", resid_history[:, niter+1])
@@ -513,7 +512,6 @@ end
         end
 
         # Quick sanity check
-        #TODO: move that into a function that can be put in CUDA ext
         diffs = abs.(diag_prod(BX, X) .-1)
         if any(diffs .>= sqrt(eps(real(eltype(X)))))
            error("LOBPCG is badly failing to keep the vectors normalized; this should never happen")
