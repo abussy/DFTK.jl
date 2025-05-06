@@ -422,7 +422,7 @@ end
         return 1 + length + G
     end
     if all(start .<= G .<= stop)
-        Vec3(G_to_index.(lengths, G))
+        Vec3{Int}(G_to_index.(lengths, G))
     else
         nothing  # Outside range of valid indices
     end
