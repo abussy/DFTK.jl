@@ -283,6 +283,12 @@ end
 # No normalization is performed
 function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
     indices = to_device(basis.architecture, collect(1:prod(basis.fft_size)))
+    Gs = G_vectors(basis)
+    fft_size = basis.fft_size
+    start = .- cld.(fft_size .- 1, 2)
+    stop  = fld.(fft_size .- 1, 2)
+    lengths = stop .- start .+ 1
+
     for symop in symmetries
         # Common special case, where ρin does not need to be processed
         if isone(symop)
@@ -298,9 +304,7 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
         #      ̂u_{Sk}(G) = e^{-i G \cdot τ} ̂u_k(S^{-1} G)
         # equivalently
         #     ρ ̂_{Sk}(G) = e^{-i G \cdot τ} ̂ρ_k(S^{-1} G)
-        invS = Mat3{Int}(inv(symop.S))
-        Gs = G_vectors(basis)
-        fft_size = basis.fft_size
+        invS = Mat3{Int}(inv(symop.S)) 
         map!(ρaccu, indices) do iG
             #TODO: maybe can do even simpler, by sticking closer to the original loop
             #      incide the map. Also, not 100% sure how index_G_vectors behaves
@@ -309,7 +313,9 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
 
             # The following works, but maybe we can do simpler
             factor = cis2pi(-T(dot(Gs[iG], symop.τ)))
-            ρaccu[iG] + factor*get_ρval(ρin, index_G_vectors_gpu(fft_size, invS * Gs[iG]))
+            idx = index_G_vectors_gpu(start, stop, lengths, invS * Gs[iG])
+            val = isnothing(idx) ? 0 : ρaccu[iG] + factor*ρin[idx[1], idx[2], idx[3]]
+            val
 
             #igired = index_G_vectors_gpu(fft_size, invS * Gs[iG])
             #val = 0
