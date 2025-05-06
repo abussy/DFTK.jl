@@ -282,7 +282,7 @@ end
 # Accumulates the symmetrized versions of the density ρin into ρout (in Fourier space).
 # No normalization is performed
 function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
-    indices = collect(1:prod(basis.fft_size))
+    indices = to_device(basis.architecture, collect(1:prod(basis.fft_size)))
     for symop in symmetries
         # Common special case, where ρin does not need to be processed
         if isone(symop)
