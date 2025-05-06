@@ -410,6 +410,24 @@ Returns nothing if outside the range of valid wave vectors.
     end
 end
 
+@inline function index_G_vectors_gpu(fft_size::Tuple, G::AbstractVector{<:Integer})
+    # the inline declaration encourages the compiler to hoist these (G-independent) precomputations
+    start = .- cld.(fft_size .- 1, 2)
+    stop  = fld.(fft_size .- 1, 2)
+    lengths = stop .- start .+ 1
+
+    # FFTs store wavevectors as [0 1 2 3 -2 -1] (example for N=5)
+    function G_to_index(length, G)
+        G >= 0 && return 1 + G
+        return 1 + length + G
+    end
+    if all(start .<= G .<= stop)
+        Vec3(G_to_index.(lengths, G))
+    else
+        nothing  # Outside range of valid indices
+    end
+end
+
 # @inline is necessary here for the inner function to be inlined as well
 @inline function index_G_vectors(basis::PlaneWaveBasis, G::AbstractVector{<:Integer})
     index_G_vectors(basis.fft_size, G)

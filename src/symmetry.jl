@@ -275,7 +275,7 @@ end
     if isnothing(idx)
         return zero(T)
     else
-        return @inbounds ρ[idx]
+        return @inbounds ρ[idx[1], idx[2], idx[3]]
     end
 end
 
@@ -303,8 +303,9 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
             #TODO: maybe can do even simpler, by sticking closer to the original loop
             #      incide the map. Also, not 100% sure how index_G_vectors behaves
             #      on the GPU. To be tested. Maybe it will be very  simple indeed
+            #      Or maybe should first fill up the ingex_G_vector array, and then copy
             factor = cis2pi(-T(dot(G_vectors(basis)[iG], symop.τ)))
-            ρaccu[iG] + factor*get_ρval(ρin, index_G_vectors(basis, invS * G_vectors(basis)[iG]))
+            ρaccu[iG] + factor*get_ρval(ρin, index_G_vectors_gpu(basis.fft_size, invS * G_vectors(basis)[iG]))
         end
         #for (ig, G) in enumerate(G_vectors_generator(basis.fft_size))
         #    igired = index_G_vectors(basis, invS * G)
@@ -339,7 +340,7 @@ Symmetrize a density by applying all the basis (by default) symmetries and formi
 """
 @views @timing function symmetrize_ρ(basis, ρ::AbstractArray{T};
                                      symmetries=basis.symmetries, do_lowpass=true) where {T}
-    ρin_fourier  = to_cpu(fft(basis, ρ))
+    ρin_fourier  = fft(basis, ρ)
     ρout_fourier = zero(ρin_fourier)
     for σ = 1:size(ρ, 4)
         accumulate_over_symmetries!(ρout_fourier[:, :, :, σ],
@@ -347,7 +348,7 @@ Symmetrize a density by applying all the basis (by default) symmetries and formi
         do_lowpass && lowpass_for_symmetry!(ρout_fourier[:, :, :, σ], basis; symmetries)
     end
     inv_fft = T <: Real ? irfft : ifft
-    inv_fft(basis, to_device(basis.architecture, ρout_fourier) ./ length(symmetries))
+    inv_fft(basis, ρout_fourier ./ length(symmetries))
 end
 
 """
