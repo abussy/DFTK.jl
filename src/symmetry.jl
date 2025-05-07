@@ -346,8 +346,7 @@ end
 end
 
 # Low-pass filters ρ (in Fourier) so that symmetry operations acting on it stay in the grid
-@timing function lowpass_for_symmetry!(ρ::AbstractArray, basis; symmetries=basis.symmetries)
-    synchronize_device(basis.architecture)
+function lowpass_for_symmetry!(ρ::AbstractArray, basis; symmetries=basis.symmetries)
     for symop in symmetries
         isone(symop) && continue
         for (ig, G) in enumerate(G_vectors_generator(basis.fft_size))
@@ -356,7 +355,6 @@ end
             end
         end
     end
-    synchronize_device(basis.architecture)
     ρ
 end
 
@@ -365,6 +363,7 @@ Symmetrize a density by applying all the basis (by default) symmetries and formi
 """
 @views @timing function symmetrize_ρ(basis, ρ::AbstractArray{T};
                                      symmetries=basis.symmetries, do_lowpass=true) where {T}
+    synchronize_device(basis.architecture)
     ρin_fourier  = fft(basis, ρ)
     ρout_fourier = zero(ρin_fourier)
     for σ = 1:size(ρ, 4)
@@ -375,7 +374,9 @@ Symmetrize a density by applying all the basis (by default) symmetries and formi
         do_lowpass && lowpass_for_symmetry!(ρout_fourier[:, :, :, σ], basis; symmetries)
     end
     inv_fft = T <: Real ? irfft : ifft
-    inv_fft(basis, ρout_fourier ./ length(symmetries))
+    out = inv_fft(basis, ρout_fourier ./ length(symmetries))
+    synchronize_device(basis.architecture)
+    out
 end
 
 """
