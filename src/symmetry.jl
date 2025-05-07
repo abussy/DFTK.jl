@@ -281,7 +281,8 @@ end
 
 # Accumulates the symmetrized versions of the density ρin into ρout (in Fourier space).
 # No normalization is performed
-function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
+@timing function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
+    synchronize_device(basis.architecture)
     indices = to_device(basis.architecture, collect(1:prod(basis.fft_size)))
     Gs = G_vectors(basis)
     fft_size = basis.fft_size
@@ -340,11 +341,13 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
         #    end
         #end
     end  # symop
+    synchronize_device(basis.architecture)
     ρaccu
 end
 
 # Low-pass filters ρ (in Fourier) so that symmetry operations acting on it stay in the grid
-function lowpass_for_symmetry!(ρ::AbstractArray, basis; symmetries=basis.symmetries)
+@timing function lowpass_for_symmetry!(ρ::AbstractArray, basis; symmetries=basis.symmetries)
+    synchronize_device(basis.architecture)
     for symop in symmetries
         isone(symop) && continue
         for (ig, G) in enumerate(G_vectors_generator(basis.fft_size))
@@ -353,6 +356,7 @@ function lowpass_for_symmetry!(ρ::AbstractArray, basis; symmetries=basis.symmet
             end
         end
     end
+    synchronize_device(basis.architecture)
     ρ
 end
 
@@ -364,6 +368,8 @@ Symmetrize a density by applying all the basis (by default) symmetries and formi
     ρin_fourier  = fft(basis, ρ)
     ρout_fourier = zero(ρin_fourier)
     for σ = 1:size(ρ, 4)
+        #TODO: need to properly measure GPU performance of the latter 2 functions, prob with NVTX,
+        #      or with an explicit barrier
         accumulate_over_symmetries!(ρout_fourier[:, :, :, σ],
                                     ρin_fourier[:, :, :, σ], basis, symmetries)
         do_lowpass && lowpass_for_symmetry!(ρout_fourier[:, :, :, σ], basis; symmetries)
