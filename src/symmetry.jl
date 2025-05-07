@@ -290,12 +290,13 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
         #      ̂u_{Sk}(G) = e^{-i G \cdot τ} ̂u_k(S^{-1} G)
         # equivalently
         #     ρ ̂_{Sk}(G) = e^{-i G \cdot τ} ̂ρ_k(S^{-1} G)
+        # TODO: it looks like, sadly, we will need to have a separate function
+        #       for the GPU case, because this is slower than the originial on the CPU
         invS = Mat3{Int}(inv(symop.S))
         map!(ρaccu, indices) do iG
             idx = index_G_vectors(fft_size, invS * Gs[iG])
-            isnothing(idx) && return zero(complex(T))
-            factor = iszero(symop.τ) ? one(complex(T)) : cis2pi(-T(dot(Gs[iG], symop.τ)))
-            @inbounds ρaccu[iG] + factor*ρin[idx]
+            factor = cis2pi(-T(dot(Gs[iG], symop.τ)))
+            isnothing(idx) ? zero(complex(T)) : ρaccu[iG] + factor * ρin[idx]
         end
     end  # symop
     ρaccu
