@@ -268,17 +268,6 @@ function apply_symop(symop::SymOp, basis, ρin; kwargs...)
     symmetrize_ρ(basis, ρin; symmetries=[symop], kwargs...)
 end
 
-@inline function get_ρval(ρ::AbstractArray{T}, idx) where {T}
-    #TODO: might not be good on the GPU. Alternative could be to add some zero
-    #      padding on the density array, and have index_G_vector point to it
-    #      instead
-    if isnothing(idx)
-        return zero(T)
-    else
-        return @inbounds ρ[idx[1], idx[2], idx[3]]
-    end
-end
-
 # Accumulates the symmetrized versions of the density ρin into ρout (in Fourier space).
 # No normalization is performed
 @timing function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
@@ -286,9 +275,6 @@ end
     indices = to_device(basis.architecture, collect(1:prod(basis.fft_size)))
     Gs = G_vectors(basis)
     fft_size = basis.fft_size
-    #start = .- cld.(fft_size .- 1, 2)
-    #stop  = fld.(fft_size .- 1, 2)
-    #lengths = stop .- start .+ 1
 
     for symop in symmetries
         # Common special case, where ρin does not need to be processed
@@ -315,12 +301,12 @@ end
             #TODO: test the perfomance of the folllwing:
             #      - passing fft_size rather than start stop lengths: optimized away, can use old
             #      - using more readable if/else
-            #      - using a inedex_G_vectors that is closer to the original
+            #      - using a inedex_G_vectors that is closer to the original: works, but with CartesianIndex?
 
             # The following works, but maybe we can do simpler
-            factor = cis2pi(-T(dot(Gs[iG], symop.τ)))
-            idx = index_G_vectors_gpu(fft_size, invS * Gs[iG])
-            val = isnothing(idx) ? 0 : ρaccu[iG] + factor*ρin[idx[1], idx[2], idx[3]]
+            factor = iszero(symop.τ) ? one(complex(T)) : cis2pi(-T(dot(Gs[iG], symop.τ)))
+            idx = index_G_vectors(fft_size, invS * Gs[iG])
+            @inbounds val = isnothing(idx) ? zero(complex(T)) : ρaccu[iG] + factor*ρin[idx]
             val
 
             #igired = index_G_vectors_gpu(fft_size, invS * Gs[iG])

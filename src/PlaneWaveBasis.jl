@@ -410,43 +410,6 @@ Returns nothing if outside the range of valid wave vectors.
     end
 end
 
-@inline function index_G_vectors_gpu(fft_size::Tuple, G::AbstractVector{<:Integer})
-    # the inline declaration encourages the compiler to hoist these (G-independent) precomputations
-    start = .- cld.(fft_size .- 1, 2)
-    stop  = fld.(fft_size .- 1, 2)
-    lengths = stop .- start .+ 1
-
-    # FFTs store wavevectors as [0 1 2 3 -2 -1] (example for N=5)
-    function G_to_index(length, G)
-        G >= 0 && return 1 + G
-        return 1 + length + G
-    end
-    if all(start .<= G .<= stop)
-        Tuple(G_to_index.(lengths, G))
-    else
-        nothing  # Outside range of valid indices
-    end
-end
-
-#@inline function index_G_vectors_gpu(fft_size::Tuple, G::AbstractVector{<:Integer})
-#    # TODO: is it necessary to pass start, stop, lengths? or can we inline like on the CPU?
-#    start = .- cld.(fft_size .- 1, 2)
-#    stop  = fld.(fft_size .- 1, 2)
-#    lengths = stop .- start .+ 1
-#
-#    # FFTs store wavevectors as [0 1 2 3 -2 -1] (example for N=5)
-#    function G_to_index(length, G)
-#        # Use conditional arithmetic to avoid branching
-#        return 1 + G + (G < 0) * length
-#    end
-#
-#    # Compute indices using conditional arithmetic
-#    indices = Vec3{Int}(G_to_index.(lengths, G))
-#
-#    # Check if G is within bounds and return indices or nothing
-#    all(start .<= G .<= stop) ? indices : nothing
-#end
-
 # @inline is necessary here for the inner function to be inlined as well
 @inline function index_G_vectors(basis::PlaneWaveBasis, G::AbstractVector{<:Integer})
     index_G_vectors(basis.fft_size, G)
