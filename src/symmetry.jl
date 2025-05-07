@@ -270,8 +270,7 @@ end
 
 # Accumulates the symmetrized versions of the density ρin into ρout (in Fourier space).
 # No normalization is performed
-@timing function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
-    synchronize_device(basis.architecture)
+function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
     indices = to_device(basis.architecture, collect(1:prod(basis.fft_size)))
     Gs = G_vectors(basis)
     fft_size = basis.fft_size
@@ -291,48 +290,14 @@ end
         #      ̂u_{Sk}(G) = e^{-i G \cdot τ} ̂u_k(S^{-1} G)
         # equivalently
         #     ρ ̂_{Sk}(G) = e^{-i G \cdot τ} ̂ρ_k(S^{-1} G)
-        invS = Mat3{Int}(inv(symop.S)) 
+        invS = Mat3{Int}(inv(symop.S))
         map!(ρaccu, indices) do iG
-            #TODO: maybe can do even simpler, by sticking closer to the original loop
-            #      incide the map. Also, not 100% sure how index_G_vectors behaves
-            #      on the GPU. To be tested. Maybe it will be very  simple indeed
-            #      Or maybe should first fill up the ingex_G_vector array, and then copy
-
-            #TODO: test the perfomance of the folllwing:
-            #      - passing fft_size rather than start stop lengths: optimized away, can use old
-            #      - using more readable if/else
-            #      - using a inedex_G_vectors that is closer to the original: works, but with CartesianIndex?
-
-            # The following works, but maybe we can do simpler
-            factor = iszero(symop.τ) ? one(complex(T)) : cis2pi(-T(dot(Gs[iG], symop.τ)))
             idx = index_G_vectors(fft_size, invS * Gs[iG])
-            @inbounds val = isnothing(idx) ? zero(complex(T)) : ρaccu[iG] + factor*ρin[idx]
-            val
-
-            #igired = index_G_vectors_gpu(fft_size, invS * Gs[iG])
-            #val = 0
-
-            #if isnothing(igired)
-            #    val = 0
-            #elseif iszero(symop.τ)
-            #    val = get_ρval(ρin, igired)
-            #else
-            #    val = cis2pi(-T(dot(Gs[iG], symop.τ))) * get_ρval(ρin, igired)
-            #end
+            isnothing(idx) && return zero(complex(T))
+            factor = iszero(symop.τ) ? one(complex(T)) : cis2pi(-T(dot(Gs[iG], symop.τ)))
+            @inbounds ρaccu[iG] + factor*ρin[idx]
         end
-        #for (ig, G) in enumerate(G_vectors_generator(basis.fft_size))
-        #    igired = index_G_vectors(basis, invS * G)
-        #    #isnothing(igired) && continue
-
-        #    if iszero(symop.τ)
-        #        @inbounds ρaccu[ig] += get_ρval(ρin, igired)
-        #    else
-        #        factor = cis2pi(-T(dot(G, symop.τ)))
-        #        @inbounds ρaccu[ig] += factor * get_ρval(ρin, igired)
-        #    end
-        #end
     end  # symop
-    synchronize_device(basis.architecture)
     ρaccu
 end
 
@@ -354,22 +319,15 @@ Symmetrize a density by applying all the basis (by default) symmetries and formi
 """
 @views @timing function symmetrize_ρ(basis, ρ::AbstractArray{T};
                                      symmetries=basis.symmetries, do_lowpass=true) where {T}
-    synchronize_device(basis.architecture)
     ρin_fourier  = fft(basis, ρ)
     ρout_fourier = zero(ρin_fourier)
     for σ = 1:size(ρ, 4)
-        #TODO: need to properly measure GPU performance of the latter 2 functions, prob with NVTX,
-        #      or with an explicit barrier
-        # There is no doubt that this GPU version is faster, both because of no copy to host, 
-        # and because the accumulate over symmetry map! is faster. Can it be made easier?
         accumulate_over_symmetries!(ρout_fourier[:, :, :, σ],
                                     ρin_fourier[:, :, :, σ], basis, symmetries)
         do_lowpass && lowpass_for_symmetry!(ρout_fourier[:, :, :, σ], basis; symmetries)
     end
     inv_fft = T <: Real ? irfft : ifft
-    out = inv_fft(basis, ρout_fourier ./ length(symmetries))
-    synchronize_device(basis.architecture)
-    out
+    inv_fft(basis, ρout_fourier ./ length(symmetries))
 end
 
 """
