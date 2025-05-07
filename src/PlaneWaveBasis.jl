@@ -410,8 +410,12 @@ Returns nothing if outside the range of valid wave vectors.
     end
 end
 
-@inline function index_G_vectors_gpu(start::Tuple, stop::Tuple, lengths::Tuple, G::AbstractVector{<:Integer})
+@inline function index_G_vectors_gpu(fft_size::Tuple, G::AbstractVector{<:Integer})
     # TODO: is it necessary to pass start, stop, lengths? or can we inline like on the CPU?
+    start = .- cld.(fft_size .- 1, 2)
+    stop  = fld.(fft_size .- 1, 2)
+    lengths = stop .- start .+ 1
+
     # FFTs store wavevectors as [0 1 2 3 -2 -1] (example for N=5)
     function G_to_index(length, G)
         # Use conditional arithmetic to avoid branching

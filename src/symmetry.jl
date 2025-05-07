@@ -286,9 +286,9 @@ end
     indices = to_device(basis.architecture, collect(1:prod(basis.fft_size)))
     Gs = G_vectors(basis)
     fft_size = basis.fft_size
-    start = .- cld.(fft_size .- 1, 2)
-    stop  = fld.(fft_size .- 1, 2)
-    lengths = stop .- start .+ 1
+    #start = .- cld.(fft_size .- 1, 2)
+    #stop  = fld.(fft_size .- 1, 2)
+    #lengths = stop .- start .+ 1
 
     for symop in symmetries
         # Common special case, where ρin does not need to be processed
@@ -312,9 +312,13 @@ end
             #      on the GPU. To be tested. Maybe it will be very  simple indeed
             #      Or maybe should first fill up the ingex_G_vector array, and then copy
 
+            #TODO: test the perfomance of the folllwing:
+            #      - passing fft_size rather than start stop lengths
+            #      - using more readable if/else
+
             # The following works, but maybe we can do simpler
             factor = cis2pi(-T(dot(Gs[iG], symop.τ)))
-            idx = index_G_vectors_gpu(start, stop, lengths, invS * Gs[iG])
+            idx = index_G_vectors_gpu(fft_size, invS * Gs[iG])
             val = isnothing(idx) ? 0 : ρaccu[iG] + factor*ρin[idx[1], idx[2], idx[3]]
             val
 
@@ -369,6 +373,8 @@ Symmetrize a density by applying all the basis (by default) symmetries and formi
     for σ = 1:size(ρ, 4)
         #TODO: need to properly measure GPU performance of the latter 2 functions, prob with NVTX,
         #      or with an explicit barrier
+        # There is no doubt that this GPU version is faster, both because of no copy to host, 
+        # and because the accumulate over symmetry map! is faster. Can it be made easier?
         accumulate_over_symmetries!(ρout_fourier[:, :, :, σ],
                                     ρin_fourier[:, :, :, σ], basis, symmetries)
         do_lowpass && lowpass_for_symmetry!(ρout_fourier[:, :, :, σ], basis; symmetries)
