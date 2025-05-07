@@ -313,8 +313,9 @@ end
             #      Or maybe should first fill up the ingex_G_vector array, and then copy
 
             #TODO: test the perfomance of the folllwing:
-            #      - passing fft_size rather than start stop lengths
+            #      - passing fft_size rather than start stop lengths: optimized away, can use old
             #      - using more readable if/else
+            #      - using a inedex_G_vectors that is closer to the original
 
             # The following works, but maybe we can do simpler
             factor = cis2pi(-T(dot(Gs[iG], symop.τ)))
