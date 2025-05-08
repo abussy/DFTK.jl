@@ -271,6 +271,11 @@ end
 # Accumulates the symmetrized versions of the density ρin into ρout (in Fourier space).
 # No normalization is performed
 function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
+    if length(symmetries) == 1 && isone(symmetries[1])
+        ρaccu .+= ρin
+        return ρaccu
+    end
+
     Gs = G_vectors(basis)
     ρtmp = similar(ρaccu)
     fft_size = basis.fft_size
@@ -293,10 +298,12 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
         # TODO: it looks like, sadly, we will need to have a separate function
         #       for the GPU case, because this is slower than the originial on the CPU
 
-        # TODO: questions to be answered:
-        #       - Should I access ρaccu within map!?, it might be somewhat unsafe
-        #       - Do I need indices at all, I could simply map over Gs and ρaccu
-        #       - maybe best to create a tmp array that we will then add to ρaccu
+        # TODO: maybe in a different branch: 
+        #       - test gain if sync_device removed from FFT loops
+        #       - test gain if Gvec_mapping sits on GPU 
+        #       - test gain when adding Psi at once (and not per col) in H x Psi
+        #       - test if threading helps with GPU (but then, leave sync_device)
+        #       - test effect of broadcasting in ifft! .= f_fourier
         invS = Mat3{Int}(inv(symop.S))
         map!(ρtmp, Gs) do G
             idx = index_G_vectors(fft_size, invS * G)
