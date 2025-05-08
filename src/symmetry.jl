@@ -271,8 +271,8 @@ end
 # Accumulates the symmetrized versions of the density ρin into ρout (in Fourier space).
 # No normalization is performed
 function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, symmetries) where {T}
-    indices = to_device(basis.architecture, collect(1:prod(basis.fft_size)))
     Gs = G_vectors(basis)
+    ρtmp = similar(ρaccu)
     fft_size = basis.fft_size
 
     for symop in symmetries
@@ -292,12 +292,17 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
         #     ρ ̂_{Sk}(G) = e^{-i G \cdot τ} ̂ρ_k(S^{-1} G)
         # TODO: it looks like, sadly, we will need to have a separate function
         #       for the GPU case, because this is slower than the originial on the CPU
+
+        # TODO: questions to be answered:
+        #       - Should I access ρaccu within map!?, it might be somewhat unsafe
+        #       - Do I need indices at all, I could simply map over Gs and ρaccu
+        #       - maybe best to create a tmp array that we will then add to ρaccu
         invS = Mat3{Int}(inv(symop.S))
-        map!(ρaccu, indices) do iG
-            idx = index_G_vectors(fft_size, invS * Gs[iG])
-            factor = cis2pi(-T(dot(Gs[iG], symop.τ)))
-            isnothing(idx) ? zero(complex(T)) : ρaccu[iG] + factor * ρin[idx]
+        map!(ρtmp, Gs) do G
+            idx = index_G_vectors(fft_size, invS * G)
+            isnothing(idx) ? zero(complex(T)) : cis2pi(-T(dot(G, symop.τ))) * ρin[idx]
         end
+        ρaccu .+= ρtmp
     end  # symop
     ρaccu
 end
