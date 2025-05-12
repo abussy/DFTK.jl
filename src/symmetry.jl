@@ -299,11 +299,23 @@ function accumulate_over_symmetries!(ρaccu, ρin, basis::PlaneWaveBasis{T}, sym
         #       for the GPU case, because this is slower than the originial on the CPU
 
         # TODO: maybe in a different branch: 
-        #       - test gain if sync_device removed from FFT loops
-        #       - test gain if Gvec_mapping sits on GPU 
-        #       - test gain when adding Psi at once (and not per col) in H x Psi
-        #       - test if threading helps with GPU (but then, leave sync_device)
-        #       - test effect of broadcasting in ifft! .= f_fourier
+        #       - test gain if sync_device removed from FFT loops: pretty much no effect
+        #       - test gain if Gvec_mapping sits on GPU (negligible, not worth the complexity)
+        #         using map rather than [] is marginally faster though. To test on CPU too
+        #       - test gain when adding Psi at once (and not per col) in H x Psi: biggest impact
+        #       - test if threading helps with GPU (but then, leave sync_device): does not work
+        #       - test writing an AbstractKernel to remap FFT arrays
+        #       - test running FFTs with a work array that is not the same as the input
+        #         maybe profile FFT call first to see if other kernels/allocations involved
+        #         AbstractKernel works really, really well
+        #       - maybe do a benchmark run with all the above (except kernel), and see if
+        #         effects add up
+        #       - Conclusions:
+        #         - We need to write our own kernel for the FFT
+        #         - Moving Psi += out of the loop is good on the GPU
+        #         - We gain a little by removing the @assert
+        #         - removing the sync device does nothing, it might even increase instability
+        #         Question: is it also good on the CPU?, or do we need to branch code again?
         invS = Mat3{Int}(inv(symop.S))
         map!(ρtmp, Gs) do G
             idx = index_G_vectors(fft_size, invS * G)
