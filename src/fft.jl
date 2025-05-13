@@ -1,5 +1,6 @@
 import FFTW
 import AbstractFFTs: fft, fft!, ifft, ifft!
+import KernelAbstractions: get_backend, @kernel, @index, @Const
 
 #
 # Perform (i)FFTs.
@@ -100,6 +101,17 @@ end
 G_vectors(fft_grid::FFTGrid) = fft_grid.G_vectors
 r_vectors(fft_grid::FFTGrid) = fft_grid.r_vectors
 
+# Mapping kernel for the K-point specific iFFT
+@kernel function ifft_remap_kernel!(f_real, @Const(Gvec_mapping), @Const(f_fourier))
+    i = @index(Global)
+    @inbounds f_real[Gvec_mapping[i]] = f_fourier[i]
+end
+function ifft_remap!(f_real, Gvec_mapping, f_fourier)
+    backend = get_backend(f_real)
+    kernel = ifft_remap_kernel!(backend)
+    kernel(f_real, Gvec_mapping, f_fourier; ndrange=length(f_fourier))
+end
+
 """
 In-place version of `ifft`.
 """
@@ -114,7 +126,8 @@ function ifft!(f_real::AbstractArray3, fft_grid::FFTGrid,
 
     # Pad the input data
     fill!(f_real, 0)
-    f_real[Gvec_mapping] = f_fourier
+    #f_real[Gvec_mapping] = f_fourier
+    ifft_remap!(f_real, Gvec_mapping, f_fourier)
 
     # Perform iFFT, equivalent to mul!(f_real, fft_grid.ipBFFT, f_real)
     f_real = fft_grid.ipBFFT * f_real
@@ -149,6 +162,16 @@ function irfft(fft_grid::FFTGrid{T}, f_fourier::AbstractArray) where {T}
     real(ifft(fft_grid, f_fourier))
 end
 
+# Mapping kernel for the K-point specific FFT
+@kernel function fft_remap_kernel!(@Const(f_real), @Const(Gvec_mapping), f_fourier)
+    i = @index(Global)
+    @inbounds f_fourier[i] = f_real[Gvec_mapping[i]]
+end
+function fft_remap!(f_fourier, f_real, Gvec_mapping)
+    backend = get_backend(f_fourier)
+    kernel = fft_remap_kernel!(backend)
+    kernel(f_real, Gvec_mapping, f_fourier; ndrange=length(f_fourier))
+end
 
 @doc raw"""
 In-place version of `fft!`.
@@ -170,7 +193,8 @@ function fft!(f_fourier::AbstractVector, fft_grid::FFTGrid,
     f_real = fft_grid.ipFFT * f_real
 
     # Truncate
-    f_fourier .= view(f_real, Gvec_mapping)
+    #f_fourier .= view(f_real, Gvec_mapping)
+    fft_remap!(f_fourier, f_real, Gvec_mapping)
     normalize && (f_fourier .*= fft_grid.fft_normalization)
     f_fourier
 end
