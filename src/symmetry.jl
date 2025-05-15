@@ -328,13 +328,26 @@ end
 
 # Low-pass filters ρ (in Fourier) so that symmetry operations acting on it stay in the grid
 function lowpass_for_symmetry!(ρ::AbstractArray, basis; symmetries=basis.symmetries)
+    if length(symmetries) == 1 && isone(symmetries[1])
+        return ρ
+    end
+
+    Gs = G_vectors(basis)
+    fft_size = basis.fft_size
+    ρtmp = similar(ρ)
+
     for symop in symmetries
         isone(symop) && continue
-        for (ig, G) in enumerate(G_vectors_generator(basis.fft_size))
-            if index_G_vectors(basis, symop.S * G) === nothing
-                ρ[ig] = 0
-            end
+        #for (ig, G) in enumerate(G_vectors_generator(basis.fft_size))
+        #    if index_G_vectors(basis, symop.S * G) === nothing
+        #        ρ[ig] = 0
+        #    end
+        #end
+        map!(ρtmp, ρ, Gs) do ρ_i, G
+            idx = index_G_vectors(fft_size, symop.S * G) #prob not isbit
+            isnothing(idx) ? 0 : ρ_i
         end
+        ρ .= ρtmp
     end
     ρ
 end
