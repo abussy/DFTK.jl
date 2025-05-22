@@ -235,6 +235,7 @@ include("workarounds/forwarddiff_rules.jl")
 
 # Optimized generic GPU functions and GPU workarounds
 include("gpu/fft.jl")
+include("gpu/symmetry.jl")
 include("gpu/linalg.jl")
 include("gpu/gpu_arrays.jl")
 
