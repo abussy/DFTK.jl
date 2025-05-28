@@ -325,7 +325,11 @@ function lowpass_for_symmetry!(ρ::AbstractArray, basis::PlaneWaveBasis{T};
         acc = ρ_i
 	    for S in symm_S
             idx = index_G_vectors(fft_size, S * G)
-            acc *= isnothing(idx) ? zero(complex(T)) : one(complex(T))
+            #acc *= isnothing(idx) ? zero(complex(T)) : one(complex(T))
+            # TODO: because of ForwardDiff, cannot convert complex(Dual)
+            # TODO: somehow, moving this here breaks the GPU. Why?!? Maybe we have
+            #       a case where rho is a CPU array and G is a GPU array?
+            acc *= isnothing(idx) ? 0 : 1
         end
         acc
     end
