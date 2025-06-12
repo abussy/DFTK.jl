@@ -122,7 +122,6 @@ end
     
     n_gkvecs = size(ψ, 1)
     n_bands = size(ψ, 2)
-    @show n_bands
     if n_bands > H.basis.max_num_bands
         error("Not enough bands available in SIRIUS. Increase 'max_num_bands_factor' when creating the SIRIUS basis.")
     end
@@ -141,6 +140,7 @@ end
     #Hψ_buff = zeros(ComplexF64, n_gkvecs, n_bands)
 
     # reordering to SIRIUS requirements
+    # TODO: with GPU, probably will need a buffer to use map!
     for ib = 1:n_bands
         #ψ_buff[:, ib] = ψ[H.basis.s2d_mapping[H.ik], ib]
         ψ[:, ib] = ψ[H.basis.s2d_mapping[H.ik], ib]
@@ -149,6 +149,9 @@ end
     #TODO: should have a ! since changes Hψ
     ik_global, ispin = ik_global_and_spin(H.ik, H.basis)
     #SIRIUS.apply_h(H.basis.sirius_kps, H.H0, ik_global, n_bands, ψ_buff, Hψ_buff)
+    # TODO: with GPU, might want to have separate set_psi and get_hpsi functions,
+    #       so that a single buffer can be used on DFTK side. Even better if we
+    #       can do that band by band
     SIRIUS.apply_h(H.basis.sirius_kps, H.H0, ik_global, n_bands, ψ, Hψ)
 
     # reordering back
