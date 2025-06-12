@@ -105,9 +105,9 @@ end
     (; λ=λ, X=X, residual_norms=res, n_iter=niter, converged=converged, n_matvec=-1)
 end
 
-#function diagonalize_all_kblocks(eigensolver, ham::SiriusHamiltonian, nev_per_kpoint::Int; kwargs ...)
-#    sirius_diagonalize(eigensolver, ham, nev_per_kpoint; kwargs...) 
-#end
+function diagonalize_all_kblocks(eigensolver, ham::SiriusHamiltonian, nev_per_kpoint::Int; kwargs ...)
+    sirius_diagonalize(eigensolver, ham, nev_per_kpoint; kwargs...) 
+end
 
 # Offload H x ψ product to SIRIUS
 function LinearAlgebra.mul!(Hψ, H::SiriusHamiltonian, ψ)
