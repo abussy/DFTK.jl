@@ -114,7 +114,7 @@ There are a few SiriusBasis specific arguments:
                           symmetries_respect_rgrid=isnothing(fft_size),
                           use_symmetries_for_kpoint_reduction=true,
                           comm_kpts=MPI.COMM_WORLD, architecture=CPU(),
-                          max_num_bands_factor=1.5, iter_tol_factor=0.25,
+                          max_num_bands_factor=2.0, iter_tol_factor=0.25,
                           sirius_silent=true)
    
     # Create the PW basis on the DFTK side
