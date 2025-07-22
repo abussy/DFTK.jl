@@ -109,7 +109,7 @@ There are a few SiriusBasis specific arguments:
 @DFTK.timing function DFTK.SiriusBasis(model::Model;
                           Ecut::Number,
                           kgrid=nothing,
-                          kshift=[0, 0, 0],
+                          kshift=nothing,
                           variational=true, fft_size=nothing,
                           symmetries_respect_rgrid=isnothing(fft_size),
                           use_symmetries_for_kpoint_reduction=true,
