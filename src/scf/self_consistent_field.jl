@@ -142,11 +142,13 @@ Overview of parameters:
     solver=scf_anderson_solver(),
     eigensolver=lobpcg_hyper,
     diagtolalg=default_diagtolalg(basis; tol),
+    orthotolalg=AdaptiveOrthotol(tol),
     nbandsalg::NbandsAlgorithm=AdaptiveBands(basis.model),
     fermialg::AbstractFermiAlgorithm=default_fermialg(basis.model),
     callback=ScfDefaultCallback(; show_damping=false),
     compute_consistent_energies=true,
     response=ResponseOptions(),  # Dummy here, only for AD
+    kwargs...
 ) where {T}
     if !isnothing(ψ)
         @assert length(ψ) == length(basis.kpoints)
@@ -167,7 +169,9 @@ Overview of parameters:
         # Diagonalize `ham` to get the new state
         nextstate = next_density(ham, nbandsalg, fermialg; eigensolver, ψ, eigenvalues,
                                  occupation, miniter=1,
-                                 tol=determine_diagtol(diagtolalg, info))
+                                 tol=determine_diagtol(diagtolalg, info),
+                                 orthotol=determine_orthotol(orthotolalg, info),
+                                 kwargs...)
         (; ψ, eigenvalues, occupation, εF, ρout) = nextstate
         Δρ = ρout - ρin
 

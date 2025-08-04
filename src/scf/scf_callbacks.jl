@@ -204,3 +204,42 @@ function default_diagtolalg(basis; tol, kwargs...)
         AdaptiveDiagtol(; diagtol_first=tol/5)
     end
 end
+
+"""
+Adaptive ortho_tol algorithm documentation.
+"""
+struct AdaptiveOrthotol
+    scf_tol
+    orthotol_min
+    orthotol_max
+    estimated_nscf
+    clamp_factor
+end
+
+function AdaptiveOrthotol(scf_tol; orthotol_min=2eps(Float64), orthotol_max=1e-12,
+                            estimated_nscf=30, clamp_factor=100)
+    AdaptiveOrthotol(scf_tol, orthotol_min, orthotol_max, estimated_nscf, clamp_factor)
+end
+
+function determine_orthotol(alg::AdaptiveOrthotol, info; f = t -> t)
+   # Assume a progression of the tolerance from orthotol_min at first SCF step,
+   # down to orthotol_max at the estimated_nscf-th SCF step. The interpolation
+   # follows the f function passed as a keyword argument, in the [0,1] interval.     
+   # If the SCF converged quantity approaches the SCF tolerance (by a factor 
+   # clamp_factor), then the tolerance is clamped to orthotol_min.
+
+    if info.n_iter ≤ 1
+        return alg.orthotol_max
+    end
+
+    # If the SCF within clamp_factor of converging, then use the minimum orthotol
+    if last(info.history_Δρ) < alg.scf_tol*alg.clamp_factor
+        return alg.orthotol_min
+    end
+
+    # Interpolate between orthotol_min and orthotol_max
+    t = min(1, info.n_iter / alg.estimated_nscf)
+    ortho_tol = alg.orthotol_max + (alg.orthotol_min - alg.orthotol_max) * f(t)
+
+    clamp(ortho_tol, alg.orthotol_min, alg.orthotol_max)
+end
