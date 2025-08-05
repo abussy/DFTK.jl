@@ -209,35 +209,42 @@ end
 Adaptive ortho_tol algorithm documentation.
 """
 struct AdaptiveOrthotol
-    scf_tol
+    scf_convergence_check
     orthotol_min
     orthotol_max
     estimated_nscf
     clamp_factor
 end
 
-function AdaptiveOrthotol(scf_tol; orthotol_min=2eps(Float64), orthotol_max=1e-12,
-                            estimated_nscf=30, clamp_factor=100)
-    AdaptiveOrthotol(scf_tol, orthotol_min, orthotol_max, estimated_nscf, clamp_factor)
+function AdaptiveOrthotol(scf_convergence_check, T::Type; orthotol_min=2eps(T), orthotol_max=1e-12,
+                          estimated_nscf=30, clamp_factor=100)
+    AdaptiveOrthotol(scf_convergence_check, orthotol_min, orthotol_max, estimated_nscf, clamp_factor)
 end
 
-function determine_orthotol(alg::AdaptiveOrthotol, info; f = t -> t)
-   # Assume a progression of the tolerance from orthotol_min at first SCF step,
-   # down to orthotol_max at the estimated_nscf-th SCF step. The interpolation
+function determine_orthotol(alg::AdaptiveOrthotol, info; f = t -> t^2)
+   # Assume a progression of the tolerance from orthotol_max at first SCF step,
+   # down to orthotol_min at the estimated_nscf-th SCF step. The interpolation
    # follows the f function passed as a keyword argument, in the [0,1] interval.     
    # If the SCF converged quantity approaches the SCF tolerance (by a factor 
-   # clamp_factor), then the tolerance is clamped to orthotol_min.
+   # clamp_factor), then the tolerance is clamped to orthotol_min. 
+
+    if alg.orthotol_min > alg.orthotol_max
+        return alg.orthotol_min
+    end
 
     if info.n_iter ≤ 1
         return alg.orthotol_max
     end
 
     # If the SCF within clamp_factor of converging, then use the minimum orthotol
-    if last(info.history_Δρ) < alg.scf_tol*alg.clamp_factor
+    scf_tol = alg.scf_convergence_check.tolerance
+    is_close_to_convergence = typeof(alg.scf_convergence_check)(alg.clamp_factor*scf_tol)
+    if is_close_to_convergence(info)
         return alg.orthotol_min
     end
 
     # Interpolate between orthotol_min and orthotol_max
+    # TODO: we could also interpolate as a function of where we are in terms of current Δ vs target tol (in log scale, I guess)
     t = min(1, info.n_iter / alg.estimated_nscf)
     ortho_tol = alg.orthotol_max + (alg.orthotol_min - alg.orthotol_max) * f(t)
 
