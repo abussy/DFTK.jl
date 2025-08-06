@@ -216,17 +216,17 @@ struct AdaptiveOrthotol
     clamp_factor
 end
 
+#TODO: test for a fast, yet safe othtotol_max
 function AdaptiveOrthotol(scf_convergence_check, T::Type; orthotol_min=2eps(T), orthotol_max=1e-12,
                           estimated_nscf=30, clamp_factor=100)
     AdaptiveOrthotol(scf_convergence_check, orthotol_min, orthotol_max, estimated_nscf, clamp_factor)
 end
 
-function determine_orthotol(alg::AdaptiveOrthotol, info; f = t -> t^2)
+function determine_orthotol(alg::AdaptiveOrthotol, info)
    # Assume a progression of the tolerance from orthotol_max at first SCF step,
    # down to orthotol_min at the estimated_nscf-th SCF step. The interpolation
-   # follows the f function passed as a keyword argument, in the [0,1] interval.     
-   # If the SCF converged quantity approaches the SCF tolerance (by a factor 
-   # clamp_factor), then the tolerance is clamped to orthotol_min. 
+   # is linear. If the SCF converged quantity approaches the SCF tolerance (by 
+   # a factor clamp_factor), then the tolerance is clamped to orthotol_min. 
 
     if alg.orthotol_min > alg.orthotol_max
         return alg.orthotol_min
@@ -246,7 +246,32 @@ function determine_orthotol(alg::AdaptiveOrthotol, info; f = t -> t^2)
     # Interpolate between orthotol_min and orthotol_max
     # TODO: we could also interpolate as a function of where we are in terms of current Δ vs target tol (in log scale, I guess)
     t = min(1, info.n_iter / alg.estimated_nscf)
-    ortho_tol = alg.orthotol_max + (alg.orthotol_min - alg.orthotol_max) * f(t)
+    ortho_tol = alg.orthotol_max + (alg.orthotol_min - alg.orthotol_max) * t
 
     clamp(ortho_tol, alg.orthotol_min, alg.orthotol_max)
+end
+
+"""
+TODO: document that
+"""
+struct ConstantOrthotol
+    orthotol
+end
+
+function ConstantOrthotol(T::Type)
+    ConstantOrthotol(2eps(T))
+end
+
+
+function determine_orthotol(alg::ConstantOrthotol, info)
+    alg.orthotol
+end
+
+function default_orthotolalg(scf_convergence_check, T::Type; kwargs...)
+    # For the adaptive orthotol algorithm to work, we need a convergence check that is compatible
+    if hasfield(typeof(scf_convergence_check), :tolerance) && hasmethod(scf_convergence_check, Tuple{T})
+        AdaptiveOrthotol(scf_convergence_check, T; kwargs...)
+    else
+        ConstantOrthotol(T)
+    end
 end

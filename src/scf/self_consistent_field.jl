@@ -143,7 +143,7 @@ Overview of parameters:
     solver=scf_anderson_solver(),
     eigensolver=lobpcg_hyper,
     diagtolalg=default_diagtolalg(basis; tol),
-    orthotolalg=AdaptiveOrthotol(is_converged, T; orthotol_max=5e-16),
+    orthotolalg=default_orthotolalg(is_converged, T),
     nbandsalg::NbandsAlgorithm=AdaptiveBands(basis.model),
     fermialg::AbstractFermiAlgorithm=default_fermialg(basis.model),
     callback=ScfDefaultCallback(; show_damping=false),
