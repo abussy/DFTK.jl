@@ -87,7 +87,7 @@ function atomic_local_form_factors(basis::PlaneWaveBasis{T}; q=zero(Vec3{T})) wh
         element = basis.model.atoms[first(group)]
         element_gpu = to_device(basis.architecture, element)
         for(p, ifnorm) in norm_indices
-            form_factors_cpu[ifnorm, igroup] = local_potential_fourier(element, p)
+            form_factors_cpu[ifnorm, igroup] = local_potential_fourier(element_gpu, p)
         end
     end
 

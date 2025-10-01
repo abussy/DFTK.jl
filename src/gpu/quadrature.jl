@@ -7,7 +7,6 @@ function to_device(architecture, psp::PspUpf)
         to_device(architecture, psp.rgrid),
         to_device(architecture, psp.drgrid),
         to_device(architecture, psp.vloc),
-        to_device(architecture, psp.buffer),
         to_device(architecture, psp.indices),
         psp.r2_projs,
         psp.h,
@@ -36,20 +35,19 @@ function to_device(architecture, el::ElementPsp)
     ElementPsp(el.species, to_device(architecture, el.psp), el.family, el.mass)
 end
 
-function integrate_local_gpu(rgrid::AbstractGPUArray{T}, vloc::AbstractGPUArray{T},
-                         buffer::AbstractGPUArray{T}, indices::AbstractGPUArray{Int},
-                         Zion, p) where {T}
+function integrate_local(rgrid::AbstractGPUArray{T}, vloc::AbstractGPUArray{T},
+                         indices::AbstractGPUArray{Int}, Zion, p::U) where {T,U<:Real}
 
-    tmp = to_cpu(rgrid[1:2])
-    dx = tmp[2] - tmp[1]
+    x12 = to_cpu(rgrid[1:2])
+    dx = x12[2] - x12[1]
     n = length(rgrid)
     n_intervals = n - 1
     istop = isodd(n_intervals) ? n - 3 : n - 1
 
     #Full buffer with function to integrate, with weights
     #Assume uniform grid for now
-    map!(buffer, vloc, rgrid, indices) do v, r, i
-        tmp = r * (r * v - -Zion * erf(r)) * sphericalbesselj_fast(0, p * r)
+    mapreduce(+, vloc, rgrid, indices) do v, r, i
+        tmp = r * (r * v + Zion * erf(r)) * sphericalbesselj_fast(0, p * r)
         if i == 1
             tmp *= 1 / 3 * dx
         elseif 1 < i <= istop
@@ -62,7 +60,7 @@ function integrate_local_gpu(rgrid::AbstractGPUArray{T}, vloc::AbstractGPUArray{
 
         if isodd(n_intervals)
             if i == n
-                tmp *= 5 /12 * dx
+                tmp *= 5 / 12 * dx
             elseif i == n-1
                 tmp *= dx
             elseif i == n-2
@@ -75,5 +73,4 @@ function integrate_local_gpu(rgrid::AbstractGPUArray{T}, vloc::AbstractGPUArray{
         end
         tmp
     end
-    sum(buffer)
 end
