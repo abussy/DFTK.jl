@@ -6,9 +6,11 @@ struct PspUpf{T,I} <: NormConservingPsp
     ## From file
     Zion::Int          # Pseudo-atomic (valence) charge. UPF: `z_valence`
     lmax::Int          # Maximal angular momentum in the non-local part. UPF: `l_max`
-    rgrid::Vector{T}   # Radial grid, can be linear or logarithmic. UPF: `PP_MESH/PP_R`
-    drgrid::Vector{T}  # Radial grid derivative / integration factors. UPF: `PP_MESH/PP_RAB`
-    vloc::Vector{T}    # Local part of the potential on the radial grid. UPF: `PP_LOCAL`
+    rgrid::AbstractVector{T}   # Radial grid, can be linear or logarithmic. UPF: `PP_MESH/PP_R`
+    drgrid::AbstractVector{T}  # Radial grid derivative / integration factors. UPF: `PP_MESH/PP_RAB`
+    vloc::AbstractVector{T}    # Local part of the potential on the radial grid. UPF: `PP_LOCAL`
+    buffer::AbstractVector{T}
+    indices::AbstractVector{Int}
     # r^2 * β where β are Kleinman-Bylander non-local projectors on the radial grid.
     # UPF: `PP_NONLOCAL/PP_BETA.i`
     r2_projs::Vector{Vector{Vector{T}}}
@@ -144,9 +146,13 @@ function PspUpf(path; identifier=path, rcut=nothing)
     r2_ρion_interp = linear_interpolation((rgrid,), r2_ρion)
     r2_ρcore_interp = linear_interpolation((rgrid,), r2_ρcore)
 
+    buffer = similar(vloc)
+    indices = similar(vloc, Int)
+    indices .= collect(1:length(vloc))
+
     PspUpf{eltype(rgrid),typeof(vloc_interp)}(
         Zion, lmax, rgrid, drgrid,
-        vloc, r2_projs, h, r2_pswfcs, pswfc_occs, pswfc_energies, pswfc_labels,
+        vloc, buffer, indices, r2_projs, h, r2_pswfcs, pswfc_occs, pswfc_energies, pswfc_labels,
         r2_ρion, r2_ρcore,
         vloc_interp, r2_projs_interp, r2_ρion_interp, r2_ρcore_interp,
         rcut, ircut, identifier, description
@@ -206,10 +212,15 @@ function eval_psp_local_fourier(psp::PspUpf, p::T)::T where {T<:Real}
     # C(r) = -Z/r; H[-Z/r] = -Z/p^2
     rgrid = @view psp.rgrid[1:psp.ircut]
     vloc  = @view psp.vloc[1:psp.ircut]
-    I = simpson(rgrid) do i, r
-         r * (r * vloc[i] - -psp.Zion * erf(r)) * sphericalbesselj_fast(0, p * r)
-    end
+    buffer = @view psp.buffer[1:psp.ircut]
+    indices = @view psp.indices[1:psp.ircut]
+    I = integrate_local(rgrid, vloc, buffer, indices, psp.Zion, p)
     4T(π) * (I + -psp.Zion / p^2 * exp(-p^2 / T(4)))
+end
+function integrate_local(rgrid, vloc, buffer, indices, Zion, p::T) where {T<:Real}
+    simpson(rgrid) do i, r
+         r * (r * vloc[i] - -Zion * erf(r)) * sphericalbesselj_fast(0, p * r)
+    end
 end
 
 function eval_psp_density_valence_real(psp::PspUpf, r::T) where {T<:Real}
