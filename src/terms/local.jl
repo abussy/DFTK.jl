@@ -82,6 +82,10 @@ function atomic_local_form_factors(basis::PlaneWaveBasis{T}; q=zero(Vec3{T})) wh
         iG2ifnorm_cpu[iG] = get!(norm_indices, p, length(norm_indices) + 1)
     end
 
+    #TODO: it looks like passing the integral only to the GPU does not bring much
+    #      probably too much overhead in the kernel launch, and too small kernel
+    #      We could either try to batch/use streams, or pass the whole loopt over P
+    #      on the GPU (and then reorder according to norm_indices)
     form_factors_cpu = zeros(T, length(norm_indices), length(basis.model.atom_groups))
     for (igroup, group) in enumerate(basis.model.atom_groups)
         element = basis.model.atoms[first(group)]
