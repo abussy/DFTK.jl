@@ -31,9 +31,9 @@ end
 function LinearAlgebra.mul!(y::AbstractArray{<:Union{Complex{<:Dual}}},
                             p::AbstractFFTs.Plan,
                             x::AbstractArray{<:Union{Complex{<:Dual}}})
-    copyto!(y, p*x)
+    copyto!(y, _mul(p, x))
 end
-function Base.:*(p::AbstractFFTs.Plan, x::AbstractArray{<:Complex{<:Dual{Tg}}}) where {Tg}
+function _mul(p::AbstractFFTs.Plan, x::AbstractArray{<:Complex{<:Dual{Tg}}}) where {Tg}
     # TODO do we want x::AbstractArray{<:Dual{T}} too?
     xtil = p * ForwardDiff.value.(x)
     dxtils = ntuple(ForwardDiff.npartials(eltype(x))) do n
@@ -46,6 +46,8 @@ function Base.:*(p::AbstractFFTs.Plan, x::AbstractArray{<:Complex{<:Dual{Tg}}}) 
         )
     end
 end
+#TODO: works on the CPU, will it work on the GPU?
+Base.:*(p::DummyInplace, x::AbstractArray{<:Union{Complex{<:Dual}}}) = copyto!(x, _mul(p.fft, x))
 
 function build_fft_plans!(tmp::AbstractArray{Complex{T}}) where {T<:Dual}
     opFFT  = AbstractFFTs.plan_fft(tmp)
