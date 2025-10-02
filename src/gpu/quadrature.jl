@@ -74,3 +74,35 @@ function integrate_local(rgrid::AbstractGPUArray{T}, vloc::AbstractGPUArray{T},
         tmp
     end
 end
+
+function internal_loop!(form_factors_cpu, norm_indices, igroup, 
+                        element::ElementPsp{<:PspUpf}, arch::GPU{AT}) where {AT}
+
+    rgrid = to_device(arch, @view element.psp.rgrid[1:element.psp.ircut])
+    vloc = to_device(arch, @view element.psp.vloc[1:element.psp.ircut])
+    ps = to_device(arch, collect(keys(norm_indices)))
+
+    ints = map(ps) do p
+        if p == 0
+            0.0 #prob want to type this correctly
+        else
+            #TODO: can a GPU thread do such work? Might need to romove
+            #      some of the fancy macros
+            internal_integration(rgrid, vloc, element.psp.Zion, p)
+        end
+    end
+
+    ints_cpu = to_cpu(ints)
+    for (p, I) in zip(keys(norm_indices), ints_cpu)
+        form_factors_cpu[norm_indices[p], igroup] = I
+    end
+
+    #for (p, ifnorm) in norm_indices
+    #    if p == 0
+    #        I = 0.0
+    #    else
+    #        I = interal_integration(rgrid, vloc, element.psp.Zion, p)
+    #    end
+    #    form_factors_cpu[ifnorm, igroup] = I
+    #end
+end

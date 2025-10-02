@@ -86,18 +86,27 @@ function atomic_local_form_factors(basis::PlaneWaveBasis{T}; q=zero(Vec3{T})) wh
     #      probably too much overhead in the kernel launch, and too small kernel
     #      We could either try to batch/use streams, or pass the whole loopt over P
     #      on the GPU (and then reorder according to norm_indices)
+    #      Streams bring nothing, I tested
     form_factors_cpu = zeros(T, length(norm_indices), length(basis.model.atom_groups))
     for (igroup, group) in enumerate(basis.model.atom_groups)
         element = basis.model.atoms[first(group)]
-        element_gpu = to_device(basis.architecture, element)
-        for(p, ifnorm) in norm_indices
-            form_factors_cpu[ifnorm, igroup] = local_potential_fourier(element_gpu, p)
-        end
+        #element_gpu = to_device(basis.architecture, element)
+        #for(p, ifnorm) in norm_indices
+        #    form_factors_cpu[ifnorm, igroup] = local_potential_fourier(element_gpu, p)
+        #end
+        internal_loop!(form_factors_cpu, norm_indices, igroup, element, basis.architecture)
     end
 
     form_factors = to_device(basis.architecture, form_factors_cpu)
     iG2ifnorm = to_device(basis.architecture, iG2ifnorm_cpu)
     (; form_factors, iG2ifnorm)
+end
+
+function internal_loop!(form_factors_cpu, norm_indices, igroup, 
+                        element::Element, arch::AbstractArchitecture)
+    for (p, ifnorm) in norm_indices
+        form_factors_cpu[ifnorm, igroup] = local_potential_fourier(element, p)
+    end
 end
 
 ## Atomic local potential
