@@ -9,7 +9,7 @@ function internal_loop!(form_factors_cpu, norm_indices, igroup,
 
     ints = map(ps) do p
         if p == 0
-            zero(eltyp(p)) #prob want to type this correctly
+            zero(eltype(p)) #prob want to type this correctly
         else
             #TODO: only works if simpson_uniform (or any other method)
             #      is called explicitly. The branchin in the simpson
