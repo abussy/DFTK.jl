@@ -87,13 +87,10 @@ function atomic_local_form_factors(basis::PlaneWaveBasis{T}; q=zero(Vec3{T})) wh
     #      We could either try to batch/use streams, or pass the whole loopt over P
     #      on the GPU (and then reorder according to norm_indices)
     #      Streams bring nothing, I tested
+    #      Actually vectorizing over the ps seems a lot better (HUUGE for stress)
     form_factors_cpu = zeros(T, length(norm_indices), length(basis.model.atom_groups))
     for (igroup, group) in enumerate(basis.model.atom_groups)
         element = basis.model.atoms[first(group)]
-        #element_gpu = to_device(basis.architecture, element)
-        #for(p, ifnorm) in norm_indices
-        #    form_factors_cpu[ifnorm, igroup] = local_potential_fourier(element_gpu, p)
-        #end
         internal_loop!(form_factors_cpu, norm_indices, igroup, element, basis.architecture)
     end
 

@@ -21,7 +21,7 @@ to_cpu(x::Array) = x
 """
 Transfer an array to a particular device (typically a GPU)
 """
-to_device(::CPU, x::AbstractArray) = to_cpu(x)
+to_device(::CPU, x) = to_cpu(x)
 to_device(::GPU{ArrayType}, x::AbstractArray) where {ArrayType} = ArrayType(x)
 to_device(::GPU{ArrayType}, x::ArrayType)     where {ArrayType} = x
 
