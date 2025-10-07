@@ -180,16 +180,22 @@ function atomic_density_form_factors(basis::PlaneWaveBasis{T},
     end
 
     form_factors_cpu = zeros(T, length(norm_indices), length(basis.model.atom_groups))
-    for (p, ifnorm) in norm_indices
-        for (igroup, group) in enumerate(basis.model.atom_groups)
-            element = basis.model.atoms[first(group)]
-            form_factors_cpu[ifnorm, igroup] = atomic_density(element, p, method)
-        end
+    for (igroup, group) in enumerate(basis.model.atom_groups)
+        element = basis.model.atoms[first(group)]
+        atomic_density_inner_loop!(form_factors_cpu, norm_indices, igroup,
+                                   element, method, basis.architecture)
     end
 
     form_factors = to_device(basis.architecture, form_factors_cpu)
     iG2ifnorm = to_device(basis.architecture, iG2ifnorm_cpu)
     (; form_factors, iG2ifnorm)
+end
+function atomic_density_inner_loop!(form_factors_cpu, norm_indices, igroup,
+                                    element::Element, method::AtomicDensity,
+                                    arch::AbstractArchitecture)
+    for (p, ifnorm) in norm_indices
+        form_factors_cpu[ifnorm, igroup] = atomic_density(element, p, method)
+    end
 end
 
 function atomic_density(element::Element, Gnorm::T,
