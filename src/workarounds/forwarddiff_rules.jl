@@ -46,7 +46,6 @@ function _mul(p::AbstractFFTs.Plan, x::AbstractArray{<:Complex{<:Dual{Tg}}}) whe
         )
     end
 end
-#TODO: works on the CPU, will it work on the GPU?
 Base.:*(p::DummyInplace, x::AbstractArray{<:Union{Complex{<:Dual}}}) = copyto!(x, _mul(p.fft, x))
 
 function build_fft_plans!(tmp::AbstractArray{Complex{T}}) where {T<:Dual}

@@ -42,7 +42,7 @@ function (xc::Xc)(basis::PlaneWaveBasis{T}) where {T}
         # Strip duals from functional parameters if needed
         params = parameters(fun)
         if !isempty(params)
-            newparams = convert_dual.(T, params)
+            newparams = map(p -> convert_dual(T, p), params)
             fun = change_parameters(fun, newparams; keep_identifier=true)
         end
         fun
