@@ -42,15 +42,15 @@ if AMDGPU.functional()
     end
 end
 
-# Enable comparisons of Duals on AMD GPUs 
+# Enable comparisons of Duals on AMD GPUs
 _val(x) = x
 _val(x::Dual) = _val(ForwardDiff.value(x))
-function Base.:<(x::Dual{ForwardDiff.Tag{F,V},V,N},
-                 y::Dual{ForwardDiff.Tag{F,V},V,N}) where {F<:Function,V,N}
+function Base.:<(x::Dual{T,V,N},
+                 y::Dual{T,V,N}) where {T,V,N}
     _val(x) < _val(y)
 end
-function Base.:>(x::Dual{ForwardDiff.Tag{F,V},V,N},
-                 y::Dual{ForwardDiff.Tag{F,V},V,N}) where {F<:Function,V,N}
+function Base.:>(x::Dual{T,V,N},
+                 y::Dual{T,V,N}) where {T,V,N}
     _val(x) > _val(y)
 end
 end
