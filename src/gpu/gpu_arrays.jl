@@ -1,7 +1,6 @@
 using LinearAlgebra
 using GPUArraysCore
 using Preferences
-using ForwardDiff
 
 # https://github.com/JuliaGPU/CUDA.jl/issues/1565
 LinearAlgebra.dot(x::AbstractGPUArray, D::Diagonal, y::AbstractGPUArray) = x' * (D * y)
@@ -16,10 +15,10 @@ for fun in (:potential_terms, :kernel_terms)
     end
 end
 
-# Make sure that Dual types are treated on the CPU (until DftFunctionals.jl is refactored)
+# Make sure that computations done by DftFunctionals.jl are done on the CPU (until refactoring)
 for fun in (:potential_terms, :kernel_terms)
     @eval function DftFunctionals.$fun(fun::DispatchFunctional, ρ::AT,
-                                       args...) where {AT <: AbstractGPUArray{ForwardDiff.Dual}}
+                                       args...) where {AT <: AbstractGPUArray}
         # Fallback implementation for the GPU: Transfer to the CPU and run computation there
         cpuify(::Nothing) = nothing
         cpuify(x::AbstractArray) = Array(x)

@@ -46,6 +46,7 @@ function _mul(p::AbstractFFTs.Plan, x::AbstractArray{<:Complex{<:Dual{Tg}}}) whe
         )
     end
 end
+Base.:*(p::AbstractFFTs.Plan, x::AbstractArray{<:Complex{<:Dual}}) = _mul(p, x)
 Base.:*(p::DummyInplace, x::AbstractArray{<:Union{Complex{<:Dual}}}) = copyto!(x, _mul(p.fft, x))
 
 function build_fft_plans!(tmp::AbstractArray{Complex{T}}) where {T<:Dual}
