@@ -16,3 +16,10 @@ The function returns the `fileprefix`.
     in case you encounter any.
 """
 function run_wannier90 end
+
+"""
+Run a SIRIUS input file in its standard JSON format. Pseudopotential files must be
+provided according to the paths specified in the input file. The SIRIUS.jl package
+must be imported with `using SIRIUS` prior to calling this function.
+"""
+function run_sirius_input end
