@@ -45,7 +45,7 @@ function build_all_form_factors(basis::PlaneWaveBasis{T}, kpt::Kpoint,
         push!(form_factors,
               to_device(basis.architecture, build_projector_form_factors(psp, G_plus_k_cart)))
     end
-    to_device(basis.architecture, form_factors)
+    form_factors
 end
 
 @timing "ene_ops: nonlocal" function ene_ops(term::TermAtomicNonlocal,
