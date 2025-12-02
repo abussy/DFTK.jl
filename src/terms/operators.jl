@@ -100,15 +100,46 @@ Nonlocal operator in Fourier space in Kleinman-Bylander format,
 defined by its projectors P matrix and coupling terms D:
 Hψ = PDP' ψ.
 """
-struct NonlocalOperator{T <: Real, PT, DT} <: RealFourierOperator
+struct NonlocalOperator{T <: Real, PT, DT, FT} <: RealFourierOperator
     basis::PlaneWaveBasis{T}
-    kpoint::Kpoint{T}
+    kpoint::Kpoint{T} 
     # not typed, can be anything that supports PDP'ψ
     P::PT
     D::DT
+    # WIP: form factors
+    form_factors::FT
 end
 function apply!(Hψ, op::NonlocalOperator, ψ)
-    mul!(Hψ.fourier, op.P, (op.D * (op.P' * ψ.fourier)), 1, 1)
+    #mul!(Hψ.fourier, op.P, (op.D * (op.P' * ψ.fourier)), 1, 1)
+    basis = op.basis
+    model = basis.model
+    unit_cell_volume = model.unit_cell_volume
+    psp_groups = [group for group in model.atom_groups
+                  if model.atoms[first(group)] isa ElementPsp]
+
+    for (igroup, group) in enumerate(psp_groups)
+        element = model.atoms[first(group)]
+
+        #TOOD: should we store it? probably, because tiny
+        T = real(typeof(basis.dvol)) #TODO: make that cleaner
+        D = to_device(basis.architecture, build_projection_coefficients(T, element.psp))
+        G_plus_k = Gplusk_vectors(basis, op.kpoint)
+        form_factors = op.form_factors[igroup]
+
+        P     = similar(form_factors)
+        Pψk   = similar(form_factors, complex(T), size(P, 2), size(ψ.fourier, 2))
+        DPψk  = similar(Pψk, size(D, 1), size(Pψk, 2))
+        structure_factors = similar(form_factors, length(G_plus_k))
+
+        for idx in group
+            r = model.positions[idx]
+            map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
+            P .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
+            Pψk .= P' * ψ.fourier
+            DPψk .= D * Pψk
+            Hψ.fourier .+= P * DPψk
+        end  # r
+    end  # group
 end
 Base.Matrix(op::NonlocalOperator) = op.P * op.D * op.P'
 
