@@ -83,7 +83,7 @@ end
         element = model.atoms[first(group)]
         for (ik, kpt) in enumerate(basis.kpoints)
             G_plus_k = Gplusk_vectors(basis, kpt)
-            D = term.ops[ik].Ds[igroup]
+            D = term.ops[ik].Ds[igroup] #TODO: should we sotre sqrt(D) in order to avoid some multiplications?
             form_factors = term.ops[ik].form_factors[igroup]
 
             P     = similar(form_factors)
@@ -99,7 +99,8 @@ end
                 #TODO: could we accumulate the Pψk, and maybe avoid the beloe operations at each idx?
                 mul!(Pψk, P', ψ[ik], 1, 0) #Pψk .= P' * ψ[ik]
                 mul!(DPψk, D, Pψk, 1, 0)   #DPψk .= D * Pψk
-                band_enes = dropdims(sum(real.(conj.(Pψk) .* DPψk), dims=1), dims=1) #TODO: hidden allocation here?
+                DPψk .*= conj.(Pψk) #TODO: change name?
+                band_enes = real(dropdims(sum(DPψk, dims=1), dims=1)) #TODO: hidden allocation here?
                 E += basis.kweights[ik] * sum(band_enes .* occupation[ik])
             end  # r
         end  # kpt
