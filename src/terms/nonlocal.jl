@@ -26,7 +26,8 @@ function (::AtomicNonlocal)(basis::PlaneWaveBasis{T}) where {T}
         P = build_projection_vectors(basis, kpt, psps, psp_positions)
         D = build_projection_coefficients(T, psps, psp_positions)
         form_factors = build_all_form_factors(basis, kpt, psps)
-        NonlocalOperator(basis, kpt, P, to_device(basis.architecture, D), form_factors)
+        Ds = build_all_Ds(basis, psps)
+        NonlocalOperator(basis, kpt, P, to_device(basis.architecture, D), form_factors, Ds)
     end
     TermAtomicNonlocal(ops)
 end
@@ -39,13 +40,21 @@ end
 function build_all_form_factors(basis::PlaneWaveBasis{T}, kpt::Kpoint,
                                 psps::AbstractVector{<: NormConservingPsp}) where {T}
 
-    form_factors = Vector{AbstractArray{Complex{T}}}()
+    form_factors = Vector{AbstractArray{Complex{T}}}() #TODO: is this really complex?
     G_plus_k_cart = to_cpu(Gplusk_vectors_cart(basis, kpt))
     for psp in psps
         push!(form_factors,
               to_device(basis.architecture, build_projector_form_factors(psp, G_plus_k_cart)))
     end
     form_factors
+end
+
+function build_all_Ds(basis::PlaneWaveBasis{T}, psps::AbstractVector{<: NormConservingPsp}) where{T}
+    Ds = Vector{AbstractMatrix{T}}()
+    for psp in psps
+        push!(Ds, to_device(basis.architecture, build_projection_coefficients(T, psp)))
+    end 
+    Ds
 end
 
 @timing "ene_ops: nonlocal" function ene_ops(term::TermAtomicNonlocal,
@@ -72,11 +81,9 @@ end
 
     for (igroup, group) in enumerate(psp_groups)
         element = model.atoms[first(group)]
-
-        #TODO: should we store it? probably, because tiny
-        D = to_device(basis.architecture, build_projection_coefficients(T, element.psp))
         for (ik, kpt) in enumerate(basis.kpoints)
             G_plus_k = Gplusk_vectors(basis, kpt)
+            D = term.ops[ik].Ds[igroup]
             form_factors = term.ops[ik].form_factors[igroup]
 
             P     = similar(form_factors)
@@ -88,9 +95,11 @@ end
                 r = model.positions[idx]
                 map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
                 P .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
-                Pψk .= P' * ψ[ik]
-                DPψk .= D * Pψk
-                band_enes = dropdims(sum(real.(conj.(Pψk) .* DPψk), dims=1), dims=1)
+                #TODO: use mul! here?
+                #TODO: could we accumulate the Pψk, and maybe avoid the beloe operations at each idx?
+                mul!(Pψk, P', ψ[ik], 1, 0) #Pψk .= P' * ψ[ik]
+                mul!(DPψk, D, Pψk, 1, 0)   #DPψk .= D * Pψk
+                band_enes = dropdims(sum(real.(conj.(Pψk) .* DPψk), dims=1), dims=1) #TODO: hidden allocation here?
                 E += basis.kweights[ik] * sum(band_enes .* occupation[ik])
             end  # r
         end  # kpt
@@ -119,7 +128,6 @@ end
     for (igroup, group) in enumerate(psp_groups)
         element = model.atoms[first(group)]
 
-        C = to_device(basis.architecture, build_projection_coefficients(T, element.psp))
         for (ik, kpt) in enumerate(basis.kpoints)
             # We compute the forces from the irreductible BZ; they are symmetrized later.
             #G_plus_k_cart = to_cpu(Gplusk_vectors_cart(basis, kpt))
@@ -127,6 +135,7 @@ end
             #form_factors = to_device(basis.architecture,
             #                         build_projector_form_factors(element.psp, G_plus_k_cart))
             form_factors = term.ops[ik].form_factors[igroup]
+            C = term.ops[ik].Ds[igroup]
 
             # Pre-allocation of large arrays (Noticable performance improvements on
             # CPU and GPU here)

@@ -100,7 +100,7 @@ Nonlocal operator in Fourier space in Kleinman-Bylander format,
 defined by its projectors P matrix and coupling terms D:
 Hψ = PDP' ψ.
 """
-struct NonlocalOperator{T <: Real, PT, DT, FT} <: RealFourierOperator
+struct NonlocalOperator{T <: Real, PT, DT, FT, DMT} <: RealFourierOperator
     basis::PlaneWaveBasis{T}
     kpoint::Kpoint{T} 
     # not typed, can be anything that supports PDP'ψ
@@ -108,6 +108,7 @@ struct NonlocalOperator{T <: Real, PT, DT, FT} <: RealFourierOperator
     D::DT
     # WIP: form factors
     form_factors::FT
+    Ds::DMT
 end
 function apply!(Hψ, op::NonlocalOperator, ψ)
     #mul!(Hψ.fourier, op.P, (op.D * (op.P' * ψ.fourier)), 1, 1)
@@ -122,8 +123,8 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
 
         #TOOD: should we store it? probably, because tiny
         T = real(typeof(basis.dvol)) #TODO: make that cleaner
-        D = to_device(basis.architecture, build_projection_coefficients(T, element.psp))
         G_plus_k = Gplusk_vectors(basis, op.kpoint)
+        D = op.Ds[igroup]
         form_factors = op.form_factors[igroup]
 
         P     = similar(form_factors)
@@ -135,8 +136,8 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
             r = model.positions[idx]
             map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
             P .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
-            Pψk .= P' * ψ.fourier
-            DPψk .= D * Pψk
+            mul!(Pψk, P', ψ.fourier, 1, 0) #Pψk .= P' * ψ.fourier
+            mul!(DPψk, D, Pψk, 1, 0) #DPψk .= D * Pψk
             Hψ.fourier .+= P * DPψk
         end  # r
     end  # group
