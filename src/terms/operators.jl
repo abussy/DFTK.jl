@@ -152,9 +152,9 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
             r = model.positions[idx]
             map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
             P .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
-            mul!(Pψk, P', ψ.fourier, 1, 0) #Pψk .= P' * ψ.fourier
-            mul!(DPψk, D, Pψk, 1, 0) #DPψk .= D * Pψk
-            Hψ.fourier .+= P * DPψk
+            mul!(Pψk, P', ψ.fourier, 1, 0)  #Pψk .= P' * ψ.fourier
+            mul!(DPψk, D, Pψk, 1, 0)        #DPψk .= D * Pψk
+            mul!(Hψ.fourier, P, DPψk, 1, 1) #Hψ.fourier .+= P * DPψk
         end  # r
     end  # group
 end
