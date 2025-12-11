@@ -100,12 +100,12 @@ Nonlocal operator in Fourier space in Kleinman-Bylander format,
 defined by its projectors P matrix and coupling terms D:
 Hψ = PDP' ψ.
 """
-struct NonlocalOperator{T <: Real, PT, DT, FT, DMT} <: RealFourierOperator
+struct NonlocalOperator{T <: Real, FT, DMT} <: RealFourierOperator
     basis::PlaneWaveBasis{T}
     kpoint::Kpoint{T} 
     # not typed, can be anything that supports PDP'ψ
-    P::PT
-    D::DT
+    #P::PT
+    #D::DT
     # WIP: form factors
     form_factors::FT
     Ds::DMT
@@ -121,7 +121,6 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
     for (igroup, group) in enumerate(psp_groups)
         element = model.atoms[first(group)]
 
-        #TOOD: should we store it? probably, because tiny
         T = real(typeof(basis.dvol)) #TODO: make that cleaner
         G_plus_k = Gplusk_vectors(basis, op.kpoint)
         D = op.Ds[igroup]
@@ -136,12 +135,13 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
             r = model.positions[idx]
             map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
             P .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
-            mul!(Pψk, P', ψ.fourier, 1, 0)  #Pψk .= P' * ψ.fourier
-            mul!(DPψk, D, Pψk, 1, 0)        #DPψk .= D * Pψk
-            mul!(Hψ.fourier, P, DPψk, 1, 1) #Hψ.fourier .+= P * DPψk
+            mul!(Pψk, P', ψ.fourier)  #Pψk .= P' * ψ.fourier
+            mul!(DPψk, D, Pψk)        #DPψk .= D * Pψk
+            Hψ.fourier .+= P * DPψk # using mul! here causes issues with type of Hψ.fourier (vector)
         end  # r
     end  # group
 end
+#TODO: is it ever used, should we remove it?
 Base.Matrix(op::NonlocalOperator) = op.P * op.D * op.P'
 
 """
