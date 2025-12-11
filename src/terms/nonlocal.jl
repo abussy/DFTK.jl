@@ -98,8 +98,8 @@ end
                 P .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
                 #TODO: use mul! here?
                 #TODO: could we accumulate the Pψk, and maybe avoid the beloe operations at each idx?
-                mul!(Pψk, P', ψ[ik], 1, 0) #Pψk .= P' * ψ[ik]
-                mul!(DPψk, D, Pψk, 1, 0)   #DPψk .= D * Pψk
+                mul!(Pψk, P', ψ[ik]) #Pψk .= P' * ψ[ik]
+                mul!(DPψk, D, Pψk)   #DPψk .= D * Pψk
                 DPψk .*= conj.(Pψk) #TODO: change name?
                 band_enes = real(dropdims(sum(DPψk, dims=1), dims=1)) #TODO: hidden allocation here?
                 E += basis.kweights[ik] * sum(band_enes .* occupation[ik])
