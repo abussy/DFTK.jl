@@ -13,7 +13,7 @@ function (::AtomicNonlocal)(basis::PlaneWaveBasis{T}) where {T}
     psp_groups = [group for group in model.atom_groups
                   if model.atoms[first(group)] isa ElementPsp]
     psps          = [model.atoms[first(group)].psp for group in psp_groups]
-    psp_positions = [model.positions[group] for group in psp_groups]
+    #psp_positions = [model.positions[group] for group in psp_groups]
 
     # WIP: add a form_factor per k-point, contract with the structure factors on the go
     #      then, everytime there is a P*D*P' operations, we loop over atomic groups, then
@@ -23,11 +23,12 @@ function (::AtomicNonlocal)(basis::PlaneWaveBasis{T}) where {T}
 
     isempty(psp_groups) && return TermNoop()
     ops = map(basis.kpoints) do kpt
-        P = build_projection_vectors(basis, kpt, psps, psp_positions)
-        D = build_projection_coefficients(T, psps, psp_positions)
+        #P = build_projection_vectors(basis, kpt, psps, psp_positions)
+        #D = build_projection_coefficients(T, psps, psp_positions)
         form_factors = build_all_form_factors(basis, kpt, psps)
         Ds = build_all_Ds(basis, psps)
-        NonlocalOperator(basis, kpt, P, to_device(basis.architecture, D), form_factors, Ds)
+        #NonlocalOperator(basis, kpt, P, to_device(basis.architecture, D), form_factors, Ds)
+        NonlocalOperator(basis, kpt, form_factors, Ds)
     end
     TermAtomicNonlocal(ops)
 end
