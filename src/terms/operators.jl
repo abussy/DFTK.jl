@@ -117,28 +117,44 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
     unit_cell_volume = model.unit_cell_volume
     psp_groups = [group for group in model.atom_groups
                   if model.atoms[first(group)] isa ElementPsp]
+    G_plus_k = Gplusk_vectors(basis, op.kpoint)
+    batch_size = 4
 
     for (igroup, group) in enumerate(psp_groups)
-        element = model.atoms[first(group)]
-
         T = real(typeof(basis.dvol)) #TODO: make that cleaner
-        G_plus_k = Gplusk_vectors(basis, op.kpoint)
-        D = op.Ds[igroup]
         form_factors = op.form_factors[igroup]
+        nproj = size(form_factors, 2)
+        nG = length(G_plus_k)
+        nbands = size(ψ.fourier, 2)
 
-        P     = similar(form_factors)
-        Pψk   = similar(form_factors, complex(T), size(P, 2), size(ψ.fourier, 2))
-        DPψk  = similar(Pψk, size(D, 1), size(Pψk, 2))
+        P     = similar(form_factors, complex(T), nG, batch_size*nproj)
+        D     = similar(form_factors, complex(T), batch_size*nproj, batch_size*nproj)
+        Pψk   = similar(form_factors, complex(T), batch_size*nproj, nbands)
+        DPψk  = similar(Pψk, batch_size*nproj, nbands)
         structure_factors = similar(form_factors, length(G_plus_k))
 
-        for idx in group
-            r = model.positions[idx]
-            map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
-            P .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
+        nbatch = ceil(Int, length(group) / batch_size)
+        for ibatch = 1:nbatch
+            start_idx = (ibatch - 1) * batch_size + 1
+            end_idx = min(ibatch * batch_size, length(group))
+            group_batch = group[start_idx:end_idx]
+
+            P .= zero(complex(T))
+            D .= zero(complex(T))
+            @views begin
+                for (i, idx) in enumerate(group_batch)
+                    proj_start = (i - 1)*nproj + 1
+                    proj_end   = i*nproj
+                    r = model.positions[idx]
+                    map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
+                    @inbounds P[:, proj_start:proj_end] .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
+                    @inbounds D[proj_start:proj_end, proj_start:proj_end] .= op.Ds[igroup]
+                end  # r
+            end #@views
             mul!(Pψk, P', ψ.fourier)  #Pψk .= P' * ψ.fourier
             mul!(DPψk, D, Pψk)        #DPψk .= D * Pψk
             Hψ.fourier .+= P * DPψk # using mul! here causes issues with type of Hψ.fourier (vector)
-        end  # r
+        end
     end  # group
 end
 #TODO: is it ever used, should we remove it?
