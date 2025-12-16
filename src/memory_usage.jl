@@ -42,6 +42,7 @@ function estimate_memory_usage(model::Model, basis_args...; basis_kwargs...)
     estimate_memory_usage(basis, model)
 end
 
+#TODO: update with batching consideration
 function estimate_memory_usage(basis::PlaneWaveBasis{T}, model=basis.model) where {T}
     isnothing(model.εF) || error("Cannot estimate memory usage for models with a fixed "
                                  * "Fermi level, since the number of bands is not known.")

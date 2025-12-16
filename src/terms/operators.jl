@@ -100,6 +100,7 @@ Nonlocal operator in Fourier space in Kleinman-Bylander format,
 defined by its projectors P matrix and coupling terms D:
 Hψ = PDP' ψ.
 """
+#TODO: clean-up and take care of DFT+U case (2 different nonlocal operators?)
 struct NonlocalOperator{T <: Real, FT, DMT} <: RealFourierOperator
     basis::PlaneWaveBasis{T}
     kpoint::Kpoint{T} 
@@ -109,6 +110,7 @@ struct NonlocalOperator{T <: Real, FT, DMT} <: RealFourierOperator
     # WIP: form factors
     form_factors::FT
     Ds::DMT
+    batch_size::Int
 end
 function apply!(Hψ, op::NonlocalOperator, ψ)
     #mul!(Hψ.fourier, op.P, (op.D * (op.P' * ψ.fourier)), 1, 1)
@@ -118,7 +120,7 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
     psp_groups = [group for group in model.atom_groups
                   if model.atoms[first(group)] isa ElementPsp]
     G_plus_k = Gplusk_vectors(basis, op.kpoint)
-    batch_size = 4
+    batch_size = max(op.batch_size, length(basis.model.atoms))
 
     for (igroup, group) in enumerate(psp_groups)
         T = real(typeof(basis.dvol)) #TODO: make that cleaner
@@ -130,8 +132,8 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
         P     = similar(form_factors, complex(T), nG, batch_size*nproj)
         D     = similar(form_factors, complex(T), batch_size*nproj, batch_size*nproj)
         Pψk   = similar(form_factors, complex(T), batch_size*nproj, nbands)
-        DPψk  = similar(Pψk, batch_size*nproj, nbands)
-        structure_factors = similar(form_factors, length(G_plus_k))
+        DPψk  = similar(form_factors, complex(T), batch_size*nproj, nbands)
+        structure_factors = similar(form_factors, complex(T), length(G_plus_k))
 
         nbatch = ceil(Int, length(group) / batch_size)
         for ibatch = 1:nbatch
@@ -141,16 +143,14 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
 
             P .= zero(complex(T))
             D .= zero(complex(T))
-            @views begin
-                for (i, idx) in enumerate(group_batch)
-                    proj_start = (i - 1)*nproj + 1
-                    proj_end   = i*nproj
-                    r = model.positions[idx]
-                    map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
-                    @inbounds P[:, proj_start:proj_end] .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
-                    @inbounds D[proj_start:proj_end, proj_start:proj_end] .= op.Ds[igroup]
-                end  # r
-            end #@views
+            for (i, idx) in enumerate(group_batch)
+                proj_start = (i - 1)*nproj + 1
+                proj_end   = i*nproj
+                r = model.positions[idx]
+                map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
+                @inbounds P[:, proj_start:proj_end] .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
+                @inbounds D[proj_start:proj_end, proj_start:proj_end] .= op.Ds[igroup]
+            end  # r
             mul!(Pψk, P', ψ.fourier)  #Pψk .= P' * ψ.fourier
             mul!(DPψk, D, Pψk)        #DPψk .= D * Pψk
             Hψ.fourier .+= P * DPψk # using mul! here causes issues with type of Hψ.fourier (vector)

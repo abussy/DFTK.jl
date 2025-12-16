@@ -94,6 +94,9 @@ struct PlaneWaveBasis{T,
 
     ## Instantiated terms (<: Term). See Hamiltonian for high-level usage
     terms::Vector{Any}
+
+    ## Batch size for nonlocal operator computations
+    nonlocal_batch_size::Int
 end
 
 
@@ -130,7 +133,8 @@ function PlaneWaveBasis(model::Model{T}, Ecut::Real, fft_size::Tuple{Int, Int, I
                         variational::Bool, kgrid::AbstractKgrid,
                         symmetries_respect_rgrid::Bool,
                         use_symmetries_for_kpoint_reduction::Bool,
-                        comm_kpts, architecture::Arch
+                        comm_kpts, architecture::Arch,
+                        nonlocal_batch_size::Int
                        ) where {T <: Real, Arch <: AbstractArchitecture}
     # TODO This needs a refactor. There is too many different things here happening
     #      at once. In particular steps, which can become rather costly for larger
@@ -250,7 +254,7 @@ function PlaneWaveBasis(model::Model{T}, Ecut::Real, fft_size::Tuple{Int, Int, I
         kcoords_global, kweights_global, n_irreducible_kpoints,
         comm_kpts, krange_thisproc, krange_allprocs, krange_thisproc_allspin,
         architecture, symmetries, symmetries_respect_rgrid,
-        use_symmetries_for_kpoint_reduction, terms)
+        use_symmetries_for_kpoint_reduction, terms, nonlocal_batch_size)
 
     # Instantiate the terms with the basis
     for (it, t) in enumerate(model.term_types)
@@ -289,7 +293,8 @@ Note, this disables certain symmetry features.
                                 variational=true, fft_size=nothing,
                                 symmetries_respect_rgrid=isnothing(fft_size),
                                 use_symmetries_for_kpoint_reduction=true,
-                                comm_kpts=MPI.COMM_WORLD, architecture=CPU()) where {T <: Real}
+                                comm_kpts=MPI.COMM_WORLD, architecture=CPU(),
+                                nonlocal_batch_size=length(model.atoms)) where {T <: Real}
     if isnothing(kshift)
         kgrid_inner = build_kgrid(model.lattice, kgrid)
     else
@@ -326,7 +331,7 @@ Note, this disables certain symmetry features.
 
     PlaneWaveBasis(model, austrip(Ecut), fft_size, variational, kgrid_inner,
                    symmetries_respect_rgrid, use_symmetries_for_kpoint_reduction,
-                   comm_kpts, architecture)
+                   comm_kpts, architecture, nonlocal_batch_size)
 end
 
 """
@@ -339,7 +344,8 @@ e.g. an [`MonkhorstPack`](@ref) or a [`ExplicitKpoints`](@ref) grid.
                    basis.fft_size, basis.variational,
                    kgrid_inner, basis.symmetries_respect_rgrid,
                    basis.use_symmetries_for_kpoint_reduction,
-                   basis.comm_kpts, basis.architecture)
+                   basis.comm_kpts, basis.architecture, 
+                   basis.nonlocal_batch_size)
 end
 
 
@@ -507,7 +513,8 @@ function gather_kpts(basis::PlaneWaveBasis)
                        basis.symmetries_respect_rgrid,
                        basis.use_symmetries_for_kpoint_reduction,
                        MPI.COMM_SELF,
-                       basis.architecture)
+                       basis.architecture,
+                       basis.nonlocal_batch_size)
     else
         nothing
     end
