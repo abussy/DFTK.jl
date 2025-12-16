@@ -28,7 +28,7 @@ function (::AtomicNonlocal)(basis::PlaneWaveBasis{T}) where {T}
         form_factors = build_all_form_factors(basis, kpt, psps)
         Ds = build_all_Ds(basis, psps)
         #NonlocalOperator(basis, kpt, P, to_device(basis.architecture, D), form_factors, Ds)
-        NonlocalOperator(basis, kpt, form_factors, Ds)
+        NonlocalOperator(basis, kpt, form_factors, Ds, basis.nonlocal_batch_size)
     end
     TermAtomicNonlocal(ops)
 end
@@ -80,32 +80,45 @@ end
     psp_groups = [group for group in model.atom_groups
                   if model.atoms[first(group)] isa ElementPsp]
 
-    for (igroup, group) in enumerate(psp_groups)
-        element = model.atoms[first(group)]
-        for (ik, kpt) in enumerate(basis.kpoints)
-            G_plus_k = Gplusk_vectors(basis, kpt)
-            D = term.ops[ik].Ds[igroup] #TODO: should we sotre sqrt(D) in order to avoid some multiplications?
+    for (ik, kpt) in enumerate(basis.kpoints)
+        G_plus_k = Gplusk_vectors(basis, kpt)
+        batch_size = min(term.ops[ik].batch_size, length(basis.model.atoms))
+        for (igroup, group) in enumerate(psp_groups)
             form_factors = term.ops[ik].form_factors[igroup]
+            nproj = size(form_factors, 2)
+            nG = length(G_plus_k)
+            nbands = size(ψ[ik], 2)
 
-            P     = similar(form_factors)
-            Pψk   = similar(form_factors, complex(T), size(P, 2), size(ψ[ik], 2))
-            DPψk  = similar(Pψk, size(D, 1), size(Pψk, 2))
-            structure_factors = similar(form_factors, length(G_plus_k))
+            P     = similar(form_factors, complex(T), nG, batch_size*nproj)
+            D     = similar(form_factors, complex(T), batch_size*nproj, batch_size*nproj)
+            Pψk   = similar(form_factors, complex(T), batch_size*nproj, nbands)
+            DPψk  = similar(form_factors, complex(T), batch_size*nproj, nbands)
+            structure_factors = similar(form_factors, complex(T), length(G_plus_k))
 
-            for idx in group
-                r = model.positions[idx]
-                map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
-                P .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
-                #TODO: use mul! here?
-                #TODO: could we accumulate the Pψk, and maybe avoid the beloe operations at each idx?
+            nbatch = ceil(Int, length(group) / batch_size)
+            for ibatch = 1:nbatch
+                start_idx = (ibatch - 1) * batch_size + 1
+                end_idx = min(ibatch * batch_size, length(group))
+                group_batch = group[start_idx:end_idx]
+
+                P .= zero(complex(T))
+                D .= zero(complex(T))
+                for (i, idx) in enumerate(group_batch)
+                    proj_start = (i - 1)*nproj + 1
+                    proj_end   = i*nproj
+                    r = model.positions[idx]
+                    map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
+                    @inbounds P[:, proj_start:proj_end] .= structure_factors .* form_factors
+                    @inbounds D[proj_start:proj_end, proj_start:proj_end] .= term.ops[ik].Ds[igroup]
+                end  # r
                 mul!(Pψk, P', ψ[ik]) #Pψk .= P' * ψ[ik]
                 mul!(DPψk, D, Pψk)   #DPψk .= D * Pψk
                 DPψk .*= conj.(Pψk) #TODO: change name?
                 band_enes = real(dropdims(sum(DPψk, dims=1), dims=1)) #TODO: hidden allocation here?
-                E += basis.kweights[ik] * sum(band_enes .* occupation[ik])
-            end  # r
-        end  # kpt
-    end  # group
+                E += 1/unit_cell_volume * basis.kweights[ik] * sum(band_enes .* occupation[ik])
+            end
+        end  # group
+    end  # kpt
     E = mpi_sum(E, basis.comm_kpts)
 
     (; E, term.ops)
@@ -341,6 +354,7 @@ function build_projection_vectors(basis::PlaneWaveBasis, kpt::Kpoint,
     psp_positions = [positions[group] for group in psp_groups]
     build_projection_vectors(basis, kpt, psps, psp_positions)
 end
+#TODO: rewrite that with batching
 function PDPψk(basis, positions, psp_groups, kpt, kpt_minus_q, ψk)
     D = build_projection_coefficients(basis, psp_groups)
     P = build_projection_vectors(basis, kpt, psp_groups, positions)
