@@ -127,14 +127,12 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
         form_factors = op.form_factors[igroup]
         nproj = size(form_factors, 2)
         nG = length(G_plus_k)
-        nbands = size(ψ.fourier, 2)
 
-        P     = similar(form_factors, complex(T), nG, batch_size*nproj)
-        D     = similar(form_factors, complex(T), batch_size*nproj, batch_size*nproj)
-        Pψk   = similar(form_factors, complex(T), batch_size*nproj, nbands)
-        DPψk  = similar(form_factors, complex(T), batch_size*nproj, nbands)
-        structure_factors = similar(form_factors, complex(T), length(G_plus_k))
+        P     = similar(form_factors, nG, batch_size*nproj)
+        D     = similar(form_factors, batch_size*nproj, batch_size*nproj)
+        structure_factors = similar(form_factors, nG)
 
+        #TODO: would probably want to hide details
         nbatch = ceil(Int, length(group) / batch_size)
         for ibatch = 1:nbatch
             start_idx = (ibatch - 1) * batch_size + 1
@@ -151,9 +149,7 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
                 @inbounds P[:, proj_start:proj_end] .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
                 @inbounds D[proj_start:proj_end, proj_start:proj_end] .= op.Ds[igroup]
             end  # r
-            mul!(Pψk, P', ψ.fourier)  #Pψk .= P' * ψ.fourier
-            mul!(DPψk, D, Pψk)        #DPψk .= D * Pψk
-            Hψ.fourier .+= P * DPψk # using mul! here causes issues with type of Hψ.fourier (vector)
+            mul!(Hψ.fourier, P, D * (P' * ψ.fourier), 1, 1)
         end
     end  # group
 end

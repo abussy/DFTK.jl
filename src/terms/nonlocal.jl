@@ -87,13 +87,10 @@ end
             form_factors = term.ops[ik].form_factors[igroup]
             nproj = size(form_factors, 2)
             nG = length(G_plus_k)
-            nbands = size(ψ[ik], 2)
 
-            P     = similar(form_factors, complex(T), nG, batch_size*nproj)
-            D     = similar(form_factors, complex(T), batch_size*nproj, batch_size*nproj)
-            Pψk   = similar(form_factors, complex(T), batch_size*nproj, nbands)
-            DPψk  = similar(form_factors, complex(T), batch_size*nproj, nbands)
-            structure_factors = similar(form_factors, complex(T), length(G_plus_k))
+            P     = similar(form_factors, nG, batch_size*nproj)
+            D     = similar(form_factors, batch_size*nproj, batch_size*nproj)
+            structure_factors = similar(form_factors, nG)
 
             nbatch = ceil(Int, length(group) / batch_size)
             for ibatch = 1:nbatch
@@ -111,8 +108,8 @@ end
                     @inbounds P[:, proj_start:proj_end] .= structure_factors .* form_factors
                     @inbounds D[proj_start:proj_end, proj_start:proj_end] .= term.ops[ik].Ds[igroup]
                 end  # r
-                mul!(Pψk, P', ψ[ik]) #Pψk .= P' * ψ[ik]
-                mul!(DPψk, D, Pψk)   #DPψk .= D * Pψk
+                Pψk = P' * ψ[ik]
+                DPψk = D * Pψk
                 DPψk .*= conj.(Pψk) #TODO: change name?
                 band_enes = real(dropdims(sum(DPψk, dims=1), dims=1)) #TODO: hidden allocation here?
                 E += 1/unit_cell_volume * basis.kweights[ik] * sum(band_enes .* occupation[ik])
