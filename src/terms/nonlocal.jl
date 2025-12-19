@@ -80,6 +80,7 @@ end
     psp_groups = [group for group in model.atom_groups
                   if model.atoms[first(group)] isa ElementPsp]
 
+    #TODO: is the btaching complexity necessary here?
     for (ik, kpt) in enumerate(basis.kpoints)
         G_plus_k = Gplusk_vectors(basis, kpt)
         batch_size = min(term.ops[ik].batch_size, length(basis.model.atoms))
