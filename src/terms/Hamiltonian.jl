@@ -140,6 +140,11 @@ end
     n_bands = size(ψ, 2)
     iszero(n_bands) && return Hψ  # Nothing to do if ψ empty
     have_divAgrad = !isnothing(H.divAgrad_op)
+    if have_divAgrad
+        #TODO: put it in Hamiltonian scratch proper. Or maybe hack it in storage here
+        #      I think I like the second option better
+        ψ_recip=zeros_like(ψ, size(ψ, 1))
+    end
 
     # Notice that we use unnormalized plans for extra speed
     potential = H.local_op.potential / prod(H.basis.fft_size)
@@ -159,7 +164,8 @@ end
                 apply!((; fourier=Hψ[:, iband], real=nothing),
                        H.divAgrad_op,
                        (; fourier=ψ[:, iband], real=nothing);
-                       ψ_scratch=ψ_real)
+                       ψ_real=ψ_real,
+                       ψ_recip=ψ_recip)
             end
         end
 

@@ -143,14 +143,18 @@ struct DivAgradOperator{T <: Real, AT} <: RealFourierOperator
     A::AT
 end
 function apply!(Hψ, op::DivAgradOperator, ψ;
-                ψ_scratch=zeros(complex(eltype(op.basis)), op.basis.fft_size...))
+                ψ_real=zeros_like(ψ.fourier, complex(eltype(op.basis)), op.basis.fft_size...),
+                ψ_recip=zeros_like(ψ.fourier))
     # TODO: Performance improvements: Unscaled plans, avoid remaining allocations
     #       (which are only on the small k-point-specific Fourier grid
-    G_plus_k = [[p[α] for p in Gplusk_vectors_cart(op.basis, op.kpoint)] for α = 1:3]
+    G_plus_k = [map(p -> p[α], Gplusk_vectors_cart(op.basis, op.kpoint)) for α = 1:3]
     for α = 1:3
-        ∂αψ_real = ifft!(ψ_scratch, op.basis, op.kpoint, im .* G_plus_k[α] .* ψ.fourier)
-        A∇ψ      = fft(op.basis, op.kpoint, ∂αψ_real .* op.A)
-        Hψ.fourier .-= im .* G_plus_k[α] .* A∇ψ ./ 2
+        #TODO: use more meaningful names?
+        ψ_recip .= im .* G_plus_k[α] .* ψ.fourier
+        ifft!(ψ_real, op.basis, op.kpoint, ψ_recip)
+        ψ_real .*= op.A 
+        fft!(ψ_recip, op.basis, op.kpoint, ψ_real)
+        Hψ.fourier .-= im .* G_plus_k[α] .* ψ_recip ./ 2
     end
 end
 # TODO Implement  Base.Matrix(op::DivAgradOperator)
