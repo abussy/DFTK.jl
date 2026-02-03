@@ -10,7 +10,6 @@ abstract type NormConservingPsp end
 #    identifier::String          # String identifying the PSP
 #    description::String         # Descriptive string
 
-#TODO: add vectorized functions
 #### Methods:
 # charge_ionic(psp)
 # has_valence_density(psp)
@@ -19,6 +18,7 @@ abstract type NormConservingPsp end
 # eval_psp_projector_fourier(psp, i, l, p::Real)
 # eval_psp_local_real(psp, r::Real)
 # eval_psp_local_fourier(psp, p::Real)
+# eval_psp_local_fourier(psp, ps::AbstractArray{Real})
 # eval_psp_energy_correction(T::Type, psp)
 
 #### Optional methods:

@@ -9,10 +9,9 @@ The integration is performed by simpson quadrature, and the function takes
 as input the radial grid `r`, the precomputed quantity r²f(r) `r2_f`, angular
 momentum / spherical bessel order `l`, and the Hankel coordinate `p`.
 """
-function hankel(r::AbstractVector, r2_f::AbstractVector, l::Integer, p::T;
-                integration_function=simpson)::T where {T<:Real}
+function hankel(r::AbstractVector, r2_f::AbstractVector, l::Integer, p::T)::T where {T<:Real}
     @assert length(r) == length(r2_f)
-    4T(π) * integration_function(r) do i, ri
+    4T(π) * simpson(r) do i, ri
         r2_f[i] * sphericalbesselj_fast(l, p * ri)
     end
 end
