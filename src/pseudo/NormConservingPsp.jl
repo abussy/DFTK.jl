@@ -10,6 +10,7 @@ abstract type NormConservingPsp end
 #    identifier::String          # String identifying the PSP
 #    description::String         # Descriptive string
 
+#TODO: add vectorized functions
 #### Methods:
 # charge_ionic(psp)
 # has_valence_density(psp)
@@ -82,6 +83,7 @@ V_{\rm loc}(p) &= ∫_{ℝ^3} (V_{\rm loc}(r) - C(r)) e^{-ip·r} dr + F[C(r)] \\
 \end{aligned}
 ```
 """
+#TODO: fix this
 #eval_psp_local_fourier(psp::NormConservingPsp, p::AbstractVector) =
 #    eval_psp_local_fourier(psp, norm(p))
 
