@@ -136,9 +136,7 @@ end
 
 # Vectorized version of the above
 function eval_psp_local_fourier(psp::PspHgh, ps::AbstractVector{T}) where {T <: Real}
-    map(ps) do p
-        eval_psp_local_fourier(psp, p)
-    end
+    map(p -> eval_psp_local_fourier(psp, p), ps)
 end
 
 @doc raw"""

@@ -212,9 +212,9 @@ function eval_psp_local_fourier(rgrid, vloc, Zion, p::T;
     # where H[-Zerf(r)/r] = -Z/p^2 exp(-p^2 /4)
     # ABINIT uses a more 'pure' Coulomb term with the same asymptotic behavior
     # C(r) = -Z/r; H[-Z/r] = -Z/p^2
-    p === 0 && return zero(T)  # Compensating charge background
+    p == 0 && return zero(T)  # Compensating charge background
     I = integration_function(rgrid) do i, r
-         r * (r * vloc[i] - -Zion * erf(r)) * sphericalbesselj_fast(0, p * r) 
+         r * (r * vloc[i] - -Zion * erf(r)) * sphericalbesselj_fast(0, p * r)
     end
     4T(π) * (I + -Zion / p^2 * exp(-p^2 / T(4)))
 end
@@ -226,7 +226,7 @@ function eval_psp_local_fourier(psp::PspUpf, p::T)::T where {T<:Real}
 end
 
 # Vectorized version of the above, GPU compatible
-function eval_psp_local_fourier(psp::PspUpf, ps::AbstractArray{T}) where {T<:Real} 
+function eval_psp_local_fourier(psp::PspUpf, ps::AbstractArray{T}) where {T<:Real}
     x = @view psp.rgrid[1:3]
     integration_function = get_integration_function(x)
 
