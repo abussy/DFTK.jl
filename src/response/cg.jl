@@ -44,21 +44,6 @@ function cg!(x::AbstractArray{T}, A!, b::AbstractArray{T};
         end
     end
 
-    proj_supports_active = false
-    try
-        proj!(zeros_like(b), b; active=1:size(b, 2))
-        proj_supports_active = true
-    catch MethodError
-        proj_supports_active = false
-    end
-    function apply_proj!(Px, x; active=nothing)
-        if proj_supports_active
-            proj!(Px, x; active)
-        else
-            proj!(Px, x)
-        end
-    end
-
     # initialisation
     # r = b - Ax is the residual
     r = copy(b)
@@ -110,9 +95,12 @@ function cg!(x::AbstractArray{T}, A!, b::AbstractArray{T};
 
         # Lock columns that are already converged. Because we can only take views with
         # contiguous ranges in GPU arrays, we lock the first and last columns.
-        locked_lb = findfirst(!, converged_cols)
-        locked_ub = findlast(!, converged_cols)
-        active = locked_lb : locked_ub
+        active = 1:size(b, 2)
+        if op_supports_active
+            locked_lb = findfirst(!, converged_cols)
+            locked_ub = findlast(!, converged_cols)
+            active = locked_lb : locked_ub
+        end
 
         @views begin
             x = full_x[:, active]
@@ -130,9 +118,9 @@ function cg!(x::AbstractArray{T}, A!, b::AbstractArray{T};
 
         # update iterate and residual while ensuring they stay in Ran(proj)
         proj_buffer .= x .+ p .* α'
-        apply_proj!(x, proj_buffer)
+        proj!(x, proj_buffer)
         proj_buffer .= r .- c .* α'
-        apply_proj!(r, proj_buffer)
+        proj!(r, proj_buffer)
         residual_norms .= to_cpu(my_norms(r))
 
         # apply preconditioner and prepare next iteration. Preconditioner applied to full arrays,
@@ -142,7 +130,7 @@ function cg!(x::AbstractArray{T}, A!, b::AbstractArray{T};
         γ .= my_dots(r, c)
         β = γ ./ γ_prev
         proj_buffer .= c .+ p .* β'
-        apply_proj!(p, proj_buffer)
+        proj!(p, proj_buffer)
     end
     info = (; x=full_x, converged, tol, residual_norms=full_residuals, n_iter, maxiter, stage=:finalize)
     callback(info)
