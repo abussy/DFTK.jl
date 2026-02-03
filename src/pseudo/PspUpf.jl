@@ -226,7 +226,7 @@ function eval_psp_local_fourier(psp::PspUpf, p::T)::T where {T<:Real}
 end
 
 # Vectorized version of the above, GPU compatible
-function eval_psp_local_fourier(psp::PspUpf, ps::AbstractArray{T}) where {T<:Real}
+function eval_psp_local_fourier(psp::PspUpf, ps::AbstractVector{T}) where {T<:Real}
     x = @view psp.rgrid[1:3]
     integration_function = get_integration_function(x)
 
@@ -235,6 +235,8 @@ function eval_psp_local_fourier(psp::PspUpf, ps::AbstractArray{T}) where {T<:Rea
     vloc  = to_device(arch, @view psp.vloc[1:psp.ircut])
     Zion = psp.Zion
     map(ps) do p
+        # GPU kernels with dynamic function calls do not compile,
+        # hence the pre-determined explicit integration function
         eval_psp_local_fourier(rgrid, vloc, Zion, p; integration_function)
     end
 end
