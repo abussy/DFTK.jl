@@ -148,11 +148,68 @@ end
         G_plus_k = [map(p -> p[α], Gplusk_vectors_cart(H.basis, H.kpoint)) for α = 1:3]
     end
 
+    #TODO: we want to measure potential benefits from doing batched FFTs. To do so, we need
+    #      to create a new FFTGrid locally. We will benchmark, but only the cost of application,
+    #      to see if it could be worthwile to pursue
+    batch_size = 4
+    n_batches = n_bands ÷ batch_size
+    fft_size = (H.basis.fft_grid.fft_size[1], H.basis.fft_grid.fft_size[2],
+                H.basis.fft_grid.fft_size[3], batch_size)
+    (ipFFT, dummy1, ipBFFT, dummy2) = build_fft_plans!(similar(ψ, fft_size))
+    Gvec_mapping = H.kpoint.mapping_device
+    ψ_real_batch = similar(ψ, H.basis.fft_size..., batch_size)
+
     # Notice that we use unnormalized plans for extra speed
     potential = H.local_op.potential .* H.basis.fft_grid.fft_normalization .*
                 H.basis.fft_grid.ifft_normalization
+    
+    potential_batch = H.local_op.potential / length(ipFFT)
 
-    parallel_loop_over_range(1:n_bands, H.scratch) do iband, storage
+    # Benchmark timing, we don't want to measure setup time
+    synchronize_device(H.basis.architecture)
+    @timing "batched FFTs" begin
+
+    # loop over batches of bands
+    for ibatch = 1:n_batches
+        range = (ibatch-1)*batch_size+1:ibatch*batch_size
+        to = TimerOutput()  # Thread-local timer output
+        ψ_real = ψ_real_batch
+
+        @timeit to "local" begin
+            fill!(ψ_real, 0)
+            for (i, iband) in enumerate(range)
+                @inbounds view(ψ_real, :, :, :, i)[Gvec_mapping] = ψ[:, iband]
+            end
+            ψ_real = ipBFFT * ψ_real
+            #for (i, iband) in enumerate(range)
+            #    view(ψ_real, :, :, :, i) .*= potential_batch # column-wise scaling
+            #end
+            ψ_real .*= potential_batch #column-wise scaling
+            ψ_real = ipFFT * ψ_real
+            for (i, iband) in enumerate(range)
+                map!(j -> view(ψ_real, :, :, :, i)[j], Hψ[:, iband], Gvec_mapping)
+            end
+        end
+
+        #if have_divAgrad
+        #    @timeit to "divAgrad" begin
+        #        apply!((; fourier=Hψ[:, iband], real=nothing),
+        #               H.divAgrad_op,
+        #               (; fourier=ψ[:, iband], real=nothing);
+        #               ψ_real, G_plus_k) # overwrites ψ_real
+        #    end
+        #end
+
+        if Threads.threadid() == 1
+            merge!(DFTK.timer, to; tree_point=[t.name for t in DFTK.timer.timer_stack])
+        end
+    end
+    
+
+    #parallel_loop_over_range(1:n_bands, H.scratch) do iband, storage
+    # remainder, one band at a time
+    for iband = n_batches*batch_size+1:n_bands
+        storage = H.scratch[1] #single thread test
         to = TimerOutput()  # Thread-local timer output
         ψ_real = storage.ψ_reals
 
@@ -174,6 +231,8 @@ end
         if Threads.threadid() == 1
             merge!(DFTK.timer, to; tree_point=[t.name for t in DFTK.timer.timer_stack])
         end
+    end
+    synchronize_device(H.basis.architecture)
     end
 
     # Kinetic term
