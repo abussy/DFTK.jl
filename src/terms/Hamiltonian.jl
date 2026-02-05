@@ -153,18 +153,12 @@ end
     #      to see if it could be worthwile to pursue
     batch_size = 4
     n_batches = n_bands ÷ batch_size
-    fft_size = (H.basis.fft_grid.fft_size[1], H.basis.fft_grid.fft_size[2],
-                H.basis.fft_grid.fft_size[3], batch_size)
-    (ipFFT, dummy1, ipBFFT, dummy2) = build_fft_plans!(similar(ψ, fft_size))
-    Gvec_mapping = H.kpoint.mapping_device
     ψ_real_batch = similar(ψ, H.basis.fft_size..., batch_size)
 
     # Notice that we use unnormalized plans for extra speed
     potential = H.local_op.potential .* H.basis.fft_grid.fft_normalization .*
                 H.basis.fft_grid.ifft_normalization
     
-    potential_batch = H.local_op.potential / length(ipFFT)
-
     # Benchmark timing, we don't want to measure setup time
     synchronize_device(H.basis.architecture)
     @timing "batched FFTs" begin
@@ -176,18 +170,12 @@ end
         ψ_real = ψ_real_batch
 
         @timeit to "local" begin
-            fill!(ψ_real, 0)
             for (i, iband) in enumerate(range)
-                @inbounds view(ψ_real, :, :, :, i)[Gvec_mapping] = ψ[:, iband]
+                ifft!(ψ_real[:, :, :, i], H.basis, H.kpoint, ψ[:, iband]; normalize=false)
             end
-            ψ_real = ipBFFT * ψ_real
-            #for (i, iband) in enumerate(range)
-            #    view(ψ_real, :, :, :, i) .*= potential_batch # column-wise scaling
-            #end
-            ψ_real .*= potential_batch #column-wise scaling
-            ψ_real = ipFFT * ψ_real
+            ψ_real .*= potential
             for (i, iband) in enumerate(range)
-                map!(j -> view(ψ_real, :, :, :, i)[j], Hψ[:, iband], Gvec_mapping)
+                fft!(Hψ[:, iband], H.basis, H.kpoint, ψ_real[:, :, :, i]; normalize=false)
             end
         end
 
