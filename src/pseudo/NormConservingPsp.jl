@@ -86,8 +86,10 @@ V_{\rm loc}(p) &= ∫_{ℝ^3} (V_{\rm loc}(r) - C(r)) e^{-ip·r} dr + F[C(r)] \\
 eval_psp_local_fourier(psp::NormConservingPsp, p::AbstractVector) =
     eval_psp_local_fourier(psp, norm(p))
 
+# Fallback vectorized implementation for non GPU-optimized code.
 function eval_psp_local_fourier(psp::NormConservingPsp, ps::AbstractVector{T}) where {T <: Real}
-    map(p -> eval_psp_local_fourier(psp, p), ps)
+    arch = architecture(ps)
+    to_device(arch, map(p -> eval_psp_local_fourier(psp, p), to_cpu(ps)))
 end
 
 @doc raw"""
