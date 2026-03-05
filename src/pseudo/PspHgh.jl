@@ -121,7 +121,6 @@ function eval_psp_local_fourier(psp::PspHgh, p::T) where {T <: Real}
 
     4T(π) * rloc^2 * (-Zion + sqrt(T(π) / 2) * rloc * t^2 * P) * exp(-t^2 / 2) / t^2
 end
-#TODO: can easily GPU optimize this: worth it?
 @vectorize_psp_function DFTK.eval_psp_local_fourier PspHgh
 
 # [GTH98] (1)
