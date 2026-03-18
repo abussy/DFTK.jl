@@ -136,7 +136,7 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
     psp_groups = [group for group in model.atom_groups
                   if model.atoms[first(group)] isa ElementPsp]
     G_plus_k = Gplusk_vectors(basis, op.kpoint)
-    batch_size = max(op.batch_size, length(basis.model.atoms))
+    batch_size = min(op.batch_size, length(basis.model.atoms)) #TODO: max atoms per kind?
 
     for (igroup, group) in enumerate(psp_groups)
         T = real(typeof(basis.dvol)) #TODO: make that cleaner
