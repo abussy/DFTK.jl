@@ -83,15 +83,16 @@ end
     #TODO: is the btaching complexity necessary here?
     for (ik, kpt) in enumerate(basis.kpoints)
         G_plus_k = Gplusk_vectors(basis, kpt)
-        batch_size = min(term.ops[ik].batch_size, length(basis.model.atoms))
+        nG = length(G_plus_k)
+        structure_factors = similar(G_plus_k, complex(T), nG)
+
         for (igroup, group) in enumerate(psp_groups)
             form_factors = term.ops[ik].form_factors[igroup]
             nproj = size(form_factors, 2)
-            nG = length(G_plus_k)
+            batch_size = min(term.ops[ik].batch_size, length(group))
 
-            P     = similar(form_factors, nG, batch_size*nproj)
-            D     = similar(form_factors, batch_size*nproj, batch_size*nproj)
-            structure_factors = similar(form_factors, nG)
+            P = similar(form_factors, nG, batch_size*nproj)
+            D = similar(form_factors, batch_size*nproj, batch_size*nproj)
 
             nbatch = ceil(Int, length(group) / batch_size)
             for ibatch = 1:nbatch
@@ -99,7 +100,6 @@ end
                 end_idx = min(ibatch * batch_size, length(group))
                 group_batch = group[start_idx:end_idx]
 
-                P .= zero(complex(T))
                 D .= zero(complex(T))
                 for (i, idx) in enumerate(group_batch)
                     proj_start = (i - 1)*nproj + 1
