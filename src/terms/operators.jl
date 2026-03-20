@@ -117,6 +117,8 @@ defined by its projectors P matrix and coupling terms D:
 Hψ = PDP' ψ.
 """
 #TODO: clean-up and take care of DFT+U case (2 different nonlocal operators?)
+#TODO: since NonlocalOperator is used in DFT+U and exact exchange, maybe create a
+#      type, like BatchedNonlocalOperator?
 struct NonlocalOperator{T <: Real, FT, DMT} <: RealFourierOperator
     basis::PlaneWaveBasis{T}
     kpoint::Kpoint{T} 
@@ -131,22 +133,22 @@ end
 function apply!(Hψ, op::NonlocalOperator, ψ)
     #mul!(Hψ.fourier, op.P, (op.D * (op.P' * ψ.fourier)), 1, 1)
     basis = op.basis
+    T = real(typeof(basis.dvol)) #TODO: make that cleaner
     model = basis.model
     unit_cell_volume = model.unit_cell_volume
     psp_groups = [group for group in model.atom_groups
                   if model.atoms[first(group)] isa ElementPsp]
     G_plus_k = Gplusk_vectors(basis, op.kpoint)
-    batch_size = min(op.batch_size, length(basis.model.atoms)) #TODO: max atoms per kind?
+    nG = length(G_plus_k)
+    structure_factors = similar(G_plus_k, complex(T), nG)
 
     for (igroup, group) in enumerate(psp_groups)
-        T = real(typeof(basis.dvol)) #TODO: make that cleaner
         form_factors = op.form_factors[igroup]
         nproj = size(form_factors, 2)
-        nG = length(G_plus_k)
+        batch_size = min(op.batch_size, length(group))
 
-        P     = similar(form_factors, nG, batch_size*nproj)
-        D     = similar(form_factors, batch_size*nproj, batch_size*nproj)
-        structure_factors = similar(form_factors, nG)
+        P = similar(form_factors, nG, batch_size*nproj)
+        D = similar(form_factors, batch_size*nproj, batch_size*nproj)
 
         #TODO: would probably want to hide details
         nbatch = ceil(Int, length(group) / batch_size)
@@ -155,15 +157,14 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
             end_idx = min(ibatch * batch_size, length(group))
             group_batch = group[start_idx:end_idx]
 
-            P .= zero(complex(T))
             D .= zero(complex(T))
-            for (i, idx) in enumerate(group_batch)
+            @inbounds for (i, idx) in enumerate(group_batch)
                 proj_start = (i - 1)*nproj + 1
                 proj_end   = i*nproj
                 r = model.positions[idx]
                 map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
-                @inbounds P[:, proj_start:proj_end] .= structure_factors .* form_factors ./ sqrt(unit_cell_volume)
-                @inbounds D[proj_start:proj_end, proj_start:proj_end] .= op.Ds[igroup]
+                P[:, proj_start:proj_end] .= structure_factors .* form_factors
+                D[proj_start:proj_end, proj_start:proj_end] .= op.Ds[igroup] ./ unit_cell_volume
             end  # r
             mul!(Hψ.fourier, P, D * (P' * ψ.fourier), 1, 1)
         end
