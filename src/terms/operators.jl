@@ -129,6 +129,66 @@ end
 Base.Matrix(op::NonlocalOperator) = op.P * (op.D * op.P')
 
 """
+Nonlocal batched operator in Fourier space in Kleinman-Bylander format.
+Applies Hψ = PDP' ψ in batches over groups of atoms, where the projectors
+P and coupling terms D are partially computed on the fly to save memory.  
+"""
+struct BatchedNonlocalOperator{T <:Real, FT, DT} <: RealFourierOperator
+    basis::PlaneWaveBasis{T}
+    kpoint::Kpoint{T}
+    form_factors::FT    # Form factors for each atomic group
+    coupling_terms::DT  # Coupling terms D for each atomic group
+    batch_size::Int     # Number of atoms to process in each batch 
+end
+#TODO: document how to works
+function batched_application(func_P_D, op::BatchedNonlocalOperator)
+    basis = op.basis
+    T = real(typeof(basis.dvol)) #TODO: make that cleaner
+    model = basis.model
+    unit_cell_volume = model.unit_cell_volume
+    psp_groups = [group for group in model.atom_groups
+                  if model.atoms[first(group)] isa ElementPsp]
+    G_plus_k = Gplusk_vectors(basis, op.kpoint)
+    nG = length(G_plus_k)
+    structure_factors = similar(G_plus_k, complex(T), nG)
+
+    for (igroup, group) in enumerate(psp_groups)
+        form_factors = op.form_factors[igroup]
+        nproj = size(form_factors, 2)
+        batch_size = min(op.batch_size, length(group))
+
+        #TODO: could probably carry a p buffer inside the operator, measure impact on performance
+        #      We would just take a view he
+        P = similar(form_factors, nG, batch_size*nproj)
+        D = similar(form_factors, batch_size*nproj, batch_size*nproj)
+
+        nbatch = ceil(Int, length(group) / batch_size)
+        for ibatch = 1:nbatch
+            start_idx = (ibatch - 1) * batch_size + 1
+            end_idx = min(ibatch * batch_size, length(group))
+            group_batch = group[start_idx:end_idx]
+
+            D .= zero(complex(T))
+            @inbounds for (i, idx) in enumerate(group_batch)
+                proj_start = (i - 1)*nproj + 1
+                proj_end   = i*nproj
+                r = model.positions[idx]
+                map!(p -> cis2pi(-dot(p, r)), structure_factors, G_plus_k)
+                P[:, proj_start:proj_end] .= structure_factors .* form_factors
+                D[proj_start:proj_end, proj_start:proj_end] .=
+                    op.coupling_terms[igroup] ./ unit_cell_volume
+            end  # r
+            func_P_D(P, D)  # apply batched projectors and coupling terms
+        end  # ibatch
+    end  # group
+end
+function apply!(Hψ, op::BatchedNonlocalOperator, ψ)
+    batched_application(op) do P, D # TODO: does that work? It would be great
+        mul!(Hψ.fourier, P, (D * (P' * ψ.fourier)), 1, 1)
+    end
+end
+
+"""
 Magnetic field operator A⋅(-i∇).
 """
 struct MagneticFieldOperator{T <: Real, AT} <: RealFourierOperator
