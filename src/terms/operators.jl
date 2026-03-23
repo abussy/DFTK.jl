@@ -128,6 +128,8 @@ function apply!(Hψ, op::NonlocalOperator, ψ)
 end
 Base.Matrix(op::NonlocalOperator) = op.P * (op.D * op.P')
 
+#TODO: the implementation is AtomicNonlocal specific, but it should not be so in the logic
+#      of this file. Maybe pass batched_application as a field of the operator?
 """
 Nonlocal batched operator in Fourier space in Kleinman-Bylander format.
 Applies Hψ = PDP' ψ in batches over groups of atoms, where the projectors

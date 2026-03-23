@@ -27,7 +27,7 @@ struct DftHamiltonianBlock <: HamiltonianBlock
     # Individual operators for easy access
     fourier_op::FourierMultiplication
     local_op::RealSpaceMultiplication
-    nonlocal_op::Union{Nothing,NonlocalOperator}
+    nonlocal_op::Union{Nothing,BatchedNonlocalOperator}
     divAgrad_op::Union{Nothing,DivAgradOperator}
 
     scratch  # Pre-allocated scratch arrays for fast application
@@ -37,7 +37,7 @@ function HamiltonianBlock(basis, kpoint, operators; scratch=nothing)
     optimized_operators = optimize_operators(operators)
     fourier_ops  = filter(o -> o isa FourierMultiplication,   optimized_operators)
     real_ops     = filter(o -> o isa RealSpaceMultiplication, optimized_operators)
-    nonlocal_ops = filter(o -> o isa NonlocalOperator,        optimized_operators)
+    nonlocal_ops = filter(o -> o isa BatchedNonlocalOperator,        optimized_operators)
     divAgrad_ops = filter(o -> o isa DivAgradOperator,        optimized_operators)
 
     n_ops_grouped = length(fourier_ops) + length(real_ops) + length(nonlocal_ops) + length(divAgrad_ops)
