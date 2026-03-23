@@ -15,7 +15,10 @@ function (::AtomicNonlocal)(basis::PlaneWaveBasis{T}) where {T}
     psps          = [model.atoms[first(group)].psp for group in psp_groups]
 
     isempty(psp_groups) && return TermNoop()
-    batch_size = length(model.atoms)  # TODO: make this an option, prob through Architecture
+    batch_size = length(model.atoms)
+    if !isnothing(basis.architecture.nonlocal_batch_size)
+        batch_size = basis.architecture.nonlocal_batch_size
+    end
     ops = map(basis.kpoints) do kpt
         form_factors = build_group_form_factors(basis, kpt, psps)
         coupling_terms = build_group_coupling_terms(basis, psps)

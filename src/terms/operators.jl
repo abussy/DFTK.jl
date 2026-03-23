@@ -147,7 +147,7 @@ end
 #TODO: document how to works
 function batched_application(func_P_D, op::BatchedNonlocalOperator)
     basis = op.basis
-    T = real(typeof(basis.dvol)) #TODO: make that cleaner
+    T = eltype(basis)
     model = basis.model
     unit_cell_volume = model.unit_cell_volume
     psp_groups = [group for group in model.atom_groups
@@ -161,8 +161,6 @@ function batched_application(func_P_D, op::BatchedNonlocalOperator)
         nproj = size(form_factors, 2)
         batch_size = min(op.batch_size, length(group))
 
-        #TODO: could probably carry a p buffer inside the operator, measure impact on performance
-        #      We would just take a view he
         P = similar(form_factors, nG, batch_size*nproj)
         D = similar(form_factors, batch_size*nproj, batch_size*nproj)
 
@@ -187,7 +185,7 @@ function batched_application(func_P_D, op::BatchedNonlocalOperator)
     end  # group
 end
 function apply!(Hψ, op::BatchedNonlocalOperator, ψ)
-    batched_application(op) do P, D # TODO: does that work? It would be great
+    batched_application(op) do P, D
         mul!(Hψ.fourier, P, (D * (P' * ψ.fourier)), 1, 1)
     end
 end

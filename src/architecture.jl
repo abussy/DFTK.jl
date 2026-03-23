@@ -3,14 +3,24 @@ Abstract supertype for architectures supported by DFTK.
 """
 abstract type AbstractArchitecture end
 
-struct CPU <: AbstractArchitecture end
+struct CPU <: AbstractArchitecture 
+    nonlocal_batch_size #TODO: document this, explain default
+end
 
-struct GPU{ArrayType <: AbstractArray} <: AbstractArchitecture end
+function CPU(; nonlocal_batch_size=nothing)
+    CPU(nonlocal_batch_size)
+end
+
+struct GPU{ArrayType <: AbstractArray} <: AbstractArchitecture
+    nonlocal_batch_size
+end
 
 """
 Construct a particular GPU architecture by passing the ArrayType
 """
-GPU(::Type{T}) where {T <: AbstractArray} = GPU{T}()
+function GPU(::Type{T}; nonlocal_batch_size=nothing) where {T <: AbstractArray}
+    GPU{T}(nonlocal_batch_size)
+end
 
 """
 Transfer an array from a device (typically a GPU) to the CPU.
