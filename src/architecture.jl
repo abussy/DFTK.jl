@@ -60,4 +60,4 @@ end
 """
 Returns the architecture of the given array, independent of the element type.
 """
-architecture(x::AbstractArray) = x isa AbstractGPUArray ? GPU{typeof(x).name.wrapper}() : CPU()
+architecture(x::AbstractArray) = x isa AbstractGPUArray ? GPU(typeof(x).name.wrapper) : CPU()
