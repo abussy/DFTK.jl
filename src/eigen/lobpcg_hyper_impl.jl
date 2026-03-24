@@ -344,7 +344,8 @@ end
 # but X and the history on the device (for GPU runs)
 @timing function LOBPCG(A, X, B=I, precon=I, tol=1e-10, maxiter=100;
                         miniter=1, ortho_tol=2eps(real(eltype(X))),
-                        n_conv_check=nothing, callback=identity)
+                        n_conv_check=nothing, callback=identity,
+                        Q=nothing, kwargs...)
     N, M = size(X)
 
     # If N is too small, we will likely get in trouble
@@ -359,6 +360,20 @@ end
 
     # B-orthogonalize X
     X = ortho!(copy(X), tol=ortho_tol)[1]
+    
+    # Orthogonalize against deflation vectors Q if provided
+    # This is done via B-orthogonalization, NOT projection
+    BQ = nothing  # Initialize BQ in outer scope
+    if !isnothing(Q)
+        if B != I
+            BQ = B * Q  # Compute BQ once
+        else
+            BQ = Q
+        end
+        # Keep X orthogonal to Q in the B-inner product
+        X = ortho!(X, Q, BQ; tol=ortho_tol)
+    end
+    
     if B != I
         BX = similar(X)
         BX = mul!(BX, B, X)
@@ -367,7 +382,7 @@ end
 
     n_matvec = M  # Count number of matrix-vector products
     AX = similar(X)
-    AX = mul!(AX, A, X)
+    AX = mul!(AX, A, X)  # No projection! Just apply A normally
     @assert !any(isnan, AX)
     # full_X/AX/BX will always store the full (including locked) X.
     # X/AX/BX only point to the active part
@@ -400,7 +415,7 @@ end
     while true
         if niter > 0  # first iteration is just to compute the residuals (no X update)
             ###  Perform the Rayleigh-Ritz
-            mul!(AR, A, R)
+            mul!(AR, A, R)  # No projection! Just apply A normally
             n_matvec += size(R, 2)
 
             # Form Rayleigh-Ritz subspace
@@ -537,13 +552,23 @@ end
             end
         end
 
-        # Orthogonalize R wrt all X, newly active P
+        # Orthogonalize R wrt all X, newly active P, and deflation vectors Q
         if niter > 0
-            Z  = LazyHcat(full_X, P)
-            BZ = LazyHcat(full_BX, BP)  # data shared with (full_X, P) in non-general case
+            if !isnothing(Q)
+                Z  = LazyHcat(Q, full_X, P)
+                BZ = LazyHcat(BQ, full_BX, BP)
+            else
+                Z  = LazyHcat(full_X, P)
+                BZ = LazyHcat(full_BX, BP)  # data shared with (full_X, P) in non-general case
+            end
         else
-            Z  = full_X
-            BZ = full_BX
+            if !isnothing(Q)
+                Z  = LazyHcat(Q, full_X)
+                BZ = LazyHcat(BQ, full_BX)
+            else
+                Z  = full_X
+                BZ = full_BX
+            end
         end
         ortho!(R, Z, BZ; tol=ortho_tol)
         if B != I
