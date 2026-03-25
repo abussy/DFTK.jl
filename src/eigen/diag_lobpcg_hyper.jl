@@ -8,25 +8,32 @@ function lobpcg_hyper(A, X0; maxiter=100, prec=nothing,
     prec === nothing && (prec = I)
     @assert !largest "Only seeking the smallest eigenpairs is implemented."
 
-    #TODO: should probably pass n_batches rather than batch_size (better load balancing)
     n_bands = size(X0, 2)
-    batch_size = min(n_bands, 4)
-    n_batches = ceil(Int, n_bands / batch_size)
+    n_batches = min(3, n_bands) #TODO: pass that through arch    
+    batch_size = ceil(Int, n_bands / n_batches)
     results = []
 
     Q = nothing
     for i_batch in 1:n_batches
-        batch_range = (i_batch-1)*batch_size + 1 : min(i_batch*batch_size, n_bands)
-        push!(results, LOBPCG(A, @view(X0[:, batch_range]), I, prec, tol, maxiter;
-                              n_conv_check=length(batch_range), Q, kwargs...))
-                              #TODO: make sure n_conv_check is correct (over tight right now)
-        Q = results[end].X
+        first_band_idx = (i_batch-1)*batch_size + 1
+        last_band_idx = min(i_batch*batch_size, n_bands)
+        batch_range = first_band_idx : last_band_idx
+        length(batch_range) == 0 && continue
+        batch_n_conv_check = nothing
+        if !isnothing(n_conv_check) && last_band_idx ≥ n_conv_check
+            batch_n_conv_check = max(1, length(first_band_idx:n_conv_check))
+        end
+        res = LOBPCG(A, @view(X0[:, batch_range]), I, prec, tol, maxiter;
+                     n_conv_check=batch_n_conv_check, Q, kwargs...)
+        Q = isnothing(Q) ? res.X : hcat(Q, res.X)
+        push!(results, (; λ = res.λ, residual_norms = res.residual_norms,  # save memory by not storing X
+                       n_matvec = res.n_matvec, residual_history = res.residual_history))
     end
 
     λ = vcat((res.λ for res in results)...)
     p = sortperm(λ)
     result = (; λ = λ[p],
-                X = hcat((res.X for res in results)...)[:, p],
+                X = Q[:, p],
                 residual_norms = vcat((res.residual_norms for res in results)...)[p],
                 n_matvec = sum(res.n_matvec for res in results))
 

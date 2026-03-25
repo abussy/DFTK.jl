@@ -361,6 +361,7 @@ end
     # B-orthogonalize X
     X = ortho!(copy(X), tol=ortho_tol)[1]
     
+    # TODO: check AI comments, they may make no sense
     # Orthogonalize against deflation vectors Q if provided
     # This is done via B-orthogonalization, NOT projection
     BQ = nothing  # Initialize BQ in outer scope
