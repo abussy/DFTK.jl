@@ -68,6 +68,7 @@ function estimate_memory_usage(basis::PlaneWaveBasis{T}, model=basis.model) wher
         n_nonlocal_projectors = 0
     end
 
+    #TODO: adpat memory prediction with batching
     nonlocal_Pk_bytes = sizeof(Complex{T}) * n_Gk * n_nonlocal_projectors
     nonlocal_P_bytes = nonlocal_Pk_bytes * n_kpoints
 

@@ -104,8 +104,8 @@ end
 end
 
 function build_group_form_factors(basis::PlaneWaveBasis{T}, kpt::Kpoint,
-                                psps::AbstractVector{<: NormConservingPsp}) where {T}
-    form_factors = Vector{AbstractArray{Complex{T}}}()
+                                  psps::AbstractVector{<: NormConservingPsp}) where {T}
+    form_factors = Vector{AbstractArray{Complex{T}}}() #TODO: should we store as real numbers?
     G_plus_k_cart = to_cpu(Gplusk_vectors_cart(basis, kpt))
     for psp in psps
         push!(form_factors,
