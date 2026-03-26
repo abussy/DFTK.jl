@@ -118,6 +118,16 @@ Base.:*(A::Adjoint{T,<:LazyHcat}, B::AbstractMatrix) where {T} = A * LazyHcat(B)
     res
 end
 
+@views function mul!(res::AbstractMatrix, Ablock::LazyHcat, B::AbstractMatrix)
+    mul!(res, Ablock.blocks[1], B[1:size(Ablock.blocks[1], 2), :])
+    offset = size(Ablock.blocks[1], 2)
+    for block in Ablock.blocks[2:end]
+        mul!(res, block, B[offset .+ (1:size(block, 2)), :], 1, 1)
+        offset += size(block, 2)
+    end
+    res
+end
+
 function LinearAlgebra.mul!(res::AbstractMatrix, Ablock::LazyHcat,
                             B::AbstractVecOrMat, α::Number, β::Number)
     mul!(res, Ablock*B, I, α, β)
@@ -388,14 +398,16 @@ end
     nlocked = 0
     niter = 0  # the first iteration is fake
     λs = compute_λ(X, AX, BX)
-    new_X  = X
-    new_AX = AX
-    new_BX = BX
+    new_X  = copy(X)
+    new_AX = copy(AX)
+    new_BX = copy(BX)
+    new_R = zero(X)
     # The full_ arrays contain all the vectors, the others only get the active ones
     full_X  = X
     full_AX = AX
     full_BX = BX
     full_λs = λs
+    full_R = R
 
     while true
         if niter > 0  # first iteration is just to compute the residuals (no X update)
@@ -420,14 +432,25 @@ end
             # wait on updating P because we have to know which vectors
             # to lock (and therefore the residuals) before computing P
             # only for the unlocked vectors. This results in better convergence.
-            new_X  = Y * cX
-            new_AX = AY * cX  # no accuracy loss, since cX orthogonal
-            new_BX = (B == I) ? new_X : BY * cX
+            #new_X = Y * cX
+            #new_AX = AY * cX
+            #if B != I
+            #    new_BX = BY * cX
+            #else
+            #    new_BX = new_X
+            #end
+            mul!(new_X, Y, cX)
+            mul!(new_AX, AY, cX)  # no accuracy loss, since cX orthogonal
+            if B == I
+                new_BX = new_X
+            else
+                mul!(new_BX, BY, cX)
+            end
         end
 
         ### Compute new residuals
         @timing "Update residuals" begin
-            new_R = new_AX .- new_BX .* λs'
+            new_R .= new_AX .- new_BX .* λs'
             norms = to_cpu(columnwise_norms(new_R))
             @views resid_history[1 + nlocked: size(new_R, 2) + nlocked, niter+1] .= norms[:]
         end
@@ -504,6 +527,7 @@ end
         # Update all X, even newly locked
         X  .= new_X
         AX .= new_AX
+        R .= new_R
         if B != I
             BX .= new_BX
         end
@@ -519,13 +543,17 @@ end
             X = X[:, active]
             AX = AX[:, active]
             BX = BX[:, active]
-            R = new_R[:, active]
+            R = R[:, active]
             AR = AR[:, active]
             BR = BR[:, active]
             P = P[:, active]
             AP = AP[:, active]
             BP = BP[:, active]
             λs = λs[active]
+            new_X = new_X[:, active]
+            new_AX = new_AX[:, active]
+            new_BX = new_BX[:, active]
+            new_R = new_R[:, active]
         end
 
         # Update newly active P
