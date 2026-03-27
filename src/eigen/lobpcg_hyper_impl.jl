@@ -352,7 +352,7 @@ end
 
 # Note that this function will return λ on the CPU,
 # but X and the history on the device (for GPU runs)
-@timing function LOBPCG(A, X, B=I, precon=I, tol=1e-10, maxiter=100;
+function LOBPCG(A, X, B=I, precon=I, tol=1e-10, maxiter=100;
                         miniter=1, ortho_tol=2eps(real(eltype(X))),
                         n_conv_check=nothing, callback=identity)
     N, M = size(X)
@@ -385,29 +385,35 @@ end
     AP = zero(X)
     R = zero(X)
     AR = zero(X)
+    new_X  = copy(X)
+    new_AX = copy(AX)
+    new_R = zero(X)
+    new_P = zero(X)
+    new_AP = zero(X)
     if B != I
         BR = zero(X)
         # BX was already computed
         BP = zero(X)
+        new_BX = copy(BX)
+        new_BP = zero(X)
     else
         # The B arrays are just pointers to the same data
         BR = R
         BX = X
         BP = P
+        new_BX = new_AX 
+        new_BP = new_AP
     end
     nlocked = 0
     niter = 0  # the first iteration is fake
     λs = compute_λ(X, AX, BX)
-    new_X  = copy(X)
-    new_AX = copy(AX)
-    new_BX = copy(BX)
-    new_R = zero(X)
+    buff = zeros_like(X, 3M, 3M)  # maximum size of the Krylov subspace. TODO: is it correct?
+                                  # Do we need at all, since not too big?
     # The full_ arrays contain all the vectors, the others only get the active ones
     full_X  = X
     full_AX = AX
     full_BX = BX
     full_λs = λs
-    full_R = R
 
     while true
         if niter > 0  # first iteration is just to compute the residuals (no X update)
@@ -504,21 +510,28 @@ end
             # cP[Xn_indices,:] .= 0
 
             lenXn = length(Xn_indices)
-            e = zeros_like(X, size(cX, 1), M - prev_nlocked)
+            e = @view buff[1:size(cX, 1), 1:M - prev_nlocked]
+            e .= 0
             lower_diag = one(similar(X, lenXn, lenXn))
             # e has zeros everywhere except on one of its lower diagonal
-            e[Xn_indices[1]:last(Xn_indices), 1:lenXn] = lower_diag
+            @inbounds e[Xn_indices[1]:last(Xn_indices), 1:lenXn] = -lower_diag
 
-            cP = cX .- e
-            cP = cP[:, Xn_indices]
+            e .+= cX
+            cP = @view e[:, Xn_indices]
             # orthogonalize against all Xn (including newly locked)
             ortho!(cP, cX, cX, tol=ortho_tol)
 
+            @views begin
+                new_P = new_P[:, Xn_indices]
+                new_AP = new_AP[:, Xn_indices]
+                B != I && (new_BP = new_BP[:, Xn_indices])
+            end
+
             # Get new P
-            new_P  = Y  * cP
-            new_AP = AY * cP
+            mul!(new_P, Y, cP)
+            mul!(new_AP, AY, cP)
             if B != I
-                new_BP = BY * cP
+                mul!(new_BP, BY, cP)
             else
                 new_BP = new_P
             end
@@ -552,7 +565,7 @@ end
             λs = λs[active]
             new_X = new_X[:, active]
             new_AX = new_AX[:, active]
-            new_BX = new_BX[:, active]
+            B != I && (new_BX = new_BX[:, active])
             new_R = new_R[:, active]
         end
 
