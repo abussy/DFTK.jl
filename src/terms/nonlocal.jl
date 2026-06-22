@@ -42,10 +42,9 @@ function build_all_form_factors(basis::PlaneWaveBasis{T}, kpt::Kpoint,
                                 psps::AbstractVector{<: NormConservingPsp}) where {T}
 
     form_factors = Vector{AbstractArray{Complex{T}}}() #TODO: is this really complex?
-    G_plus_k_cart = to_cpu(Gplusk_vectors_cart(basis, kpt))
+    G_plus_k_cart = Gplusk_vectors_cart(basis, kpt)
     for psp in psps
-        push!(form_factors,
-              to_device(basis.architecture, build_projector_form_factors(psp, G_plus_k_cart)))
+        push!(form_factors, build_projector_form_factors(psp, G_plus_k_cart))
     end
     form_factors
 end
