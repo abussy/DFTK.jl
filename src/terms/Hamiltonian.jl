@@ -134,7 +134,8 @@ end
 end
 
 # Fast version, specialized on DFT models. Minimizes the number of FFTs and allocations
-@views @timing "DftHamiltonian multiplication" function LinearAlgebra.mul!(Hψ::AbstractArray,
+#@views @timing "DftHamiltonian multiplication" function LinearAlgebra.mul!(Hψ::AbstractArray,
+@views  function LinearAlgebra.mul!(Hψ::AbstractArray,
                                                                            H::DftHamiltonianBlock,
                                                                            ψ::AbstractArray)
     n_bands = size(ψ, 2)
@@ -152,29 +153,58 @@ end
     potential = H.local_op.potential .* H.basis.fft_grid.fft_normalization .*
                 H.basis.fft_grid.ifft_normalization
 
-    parallel_loop_over_range(1:n_bands, H.scratch) do iband, storage
-        to = TimerOutput()  # Thread-local timer output
-        ψ_real = storage.ψ_reals
+    # WIP: we create some batched FFT plans
+    batch_size = 4
+    nbatch = ceil(Int, n_bands / batch_size)
+    ψ_real = similar(ψ, complex(eltype(H.basis)), H.basis.fft_size..., batch_size)
+    fft_plan = plan_fft!(ψ_real, (1,2,3))
+    ifft_plan = inv(fft_plan).p
 
-        @timeit to "local" begin
-            ifft!(ψ_real, H.basis, H.kpoint, ψ[:, iband]; normalize=false)
-            ψ_real .*= potential
-            fft!(Hψ[:, iband], H.basis, H.kpoint, ψ_real; normalize=false)  # overwrites ψ_real
-        end
+    for ibatch = 1:nbatch
+        iband_start = (ibatch-1)*batch_size + 1
+        iband_end   = min(ibatch*batch_size, n_bands)
+        batch_range = iband_start:iband_end
 
-        if have_divAgrad
-            @timeit to "divAgrad" begin
-                apply!((; fourier=Hψ[:, iband], real=nothing),
-                       H.divAgrad_op,
-                       (; fourier=ψ[:, iband], real=nothing);
-                       ψ_real, G_plus_k) # overwrites ψ_real
-            end
-        end
+        n_active = length(batch_range)
 
-        if Threads.threadid() == 1
-            merge!(DFTK.timer, to; tree_point=[t.name for t in DFTK.timer.timer_stack])
-        end
+        # batched ifft
+        fill!(ψ_real, 0)
+        ψ_real_2d = reshape(ψ_real, :, batch_size)
+        @inbounds ψ_real_2d[H.kpoint.mapping_device, 1:n_active] = ψ[:, batch_range]
+        ψ_real = ifft_plan * ψ_real
+
+        # potential
+        ψ_real .*= potential
+
+        # batched fft
+        ψ_real = fft_plan * ψ_real
+        ψ_real_2d = reshape(ψ_real, :, batch_size)
+        @inbounds Hψ[:, batch_range] .= ψ_real_2d[H.kpoint.mapping_device, 1:n_active]
     end
+
+    #parallel_loop_over_range(1:n_bands, H.scratch) do iband, storage
+    #    to = TimerOutput()  # Thread-local timer output
+    #    ψ_real = storage.ψ_reals
+
+    #    @timeit to "local" begin
+    #        ifft!(ψ_real, H.basis, H.kpoint, ψ[:, iband]; normalize=false)
+    #        ψ_real .*= potential
+    #        fft!(Hψ[:, iband], H.basis, H.kpoint, ψ_real; normalize=false)  # overwrites ψ_real
+    #    end
+
+    #    if have_divAgrad
+    #        @timeit to "divAgrad" begin
+    #            apply!((; fourier=Hψ[:, iband], real=nothing),
+    #                   H.divAgrad_op,
+    #                   (; fourier=ψ[:, iband], real=nothing);
+    #                   ψ_real, G_plus_k) # overwrites ψ_real
+    #        end
+    #    end
+
+    #    if Threads.threadid() == 1
+    #        merge!(DFTK.timer, to; tree_point=[t.name for t in DFTK.timer.timer_stack])
+    #    end
+    #end
 
     # Kinetic term
     Hψ .+= H.fourier_op.multiplier .* ψ
