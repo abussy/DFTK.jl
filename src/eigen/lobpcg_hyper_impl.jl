@@ -260,6 +260,25 @@ normest(M) = maximum(abs, diag(M)) + norm(M - Diagonal(diag(M)))
     (; X, nchol=nchol_total, growth_factor)
 end
 
+function ortho_chol_n!(X::AbstractArray{T}; N::Int=2) where {T}
+    nchol_total = 0
+
+    for _ = 1:N
+        O = mul_hermi(X', X)
+        R, invR, nchol = safe_cholesky(O)
+        nchol_total += nchol
+
+        if isnothing(R)
+            U, _, V = svd(X)
+            return (; X=U*V', nchol=nchol_total, growth_factor=one(real(T)))
+        end
+
+        rmul!(X, invR)
+    end
+
+    (; X, nchol=nchol_total, growth_factor=one(real(T)))
+end
+
 # Randomize the columns of X if the norm is below tol
 function drop_small!(X::AbstractArray{T}; tol=2eps(real(T))) where {T}
     dropped = findall(n -> n <= tol, columnwise_norms(X))
@@ -280,7 +299,7 @@ end
         # If the orthogonalization has produced results below 2eps, we drop them
         # This is to be able to orthogonalize eg [1;0] against [e^iθ;0],
         # as can happen in extreme cases in the ortho!(cP, cX)
-        dropped = drop_small!(X; tol)
+        dropped = drop_small!(X; tol) #TODO: can probably not do this if choleskyN
         if !isempty(dropped)
             X[:, dropped] .-= Y * (BY' * X[:, dropped])
         end
@@ -289,7 +308,8 @@ end
             push!(ninners, 0)
             break
         end
-        X, ninner, growth_factor = ortho!(X; tol)
+        #X, ninner, growth_factor = ortho!(X; tol)
+        X, ninner, growth_factor = ortho_chol_n!(X; N=2)
         push!(ninners, ninner)
 
         # norm(BY'X) < tol && break should be the proper check, but
@@ -301,8 +321,8 @@ end
 
         # If we're at a fixed point, growth_factor is 1 and if tol > eps(),
         # the loop will terminate, even if BY'Y != 0
-        estimated_error = growth_factor * eps(real(T))
-        estimated_error < tol && break
+        #estimated_error = growth_factor * eps(real(T))
+        #estimated_error < tol && break
 
         if niter > 10
             U, _, V = svd(X)  # Fall back to gold standard
@@ -316,6 +336,7 @@ end
     end
     @debug "Required $ninners choleskys in ortho!(X, Y)"
 
+    @show norm(BY'X), norm(X'X - I), niter
     # @assert (norm(BY'X)) < tol
     # @assert (norm(X'X-I)) < tol
 
