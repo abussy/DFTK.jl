@@ -261,22 +261,19 @@ normest(M) = maximum(abs, diag(M)) + norm(M - Diagonal(diag(M)))
 end
 
 function ortho_chol_n!(X::AbstractArray{T}; N::Int=2) where {T}
-    nchol_total = 0
-
-    for _ = 1:N
-        O = mul_hermi(X', X)
-        R, invR, nchol = safe_cholesky(O)
-        nchol_total += nchol
-
-        if isnothing(R)
-            U, _, V = svd(X)
-            return (; X=U*V', nchol=nchol_total, growth_factor=one(real(T)))
+    try
+        for _ = 1:N
+            O = mul_hermi(X', X)
+            R = cholesky(O).U
+            rdiv!(X, R)
         end
-
-        rmul!(X, invR)
+    catch err
+        U, _, V = svd(X)
+        X = U*V'
+        return X
     end
 
-    (; X, nchol=nchol_total, growth_factor=one(real(T)))
+    X
 end
 
 # Randomize the columns of X if the norm is below tol
@@ -291,9 +288,7 @@ end
     # normalize to try to cheaply improve conditioning
     X ./= columnwise_norms(X)'
 
-    niter = 1
-    ninners = zeros(Int, 0)
-    while true
+    for niter = 1:3
         BYX = BY' * X
         mul!(X, Y, BYX, -1, 1)  # X -= Y*BY'X
         # If the orthogonalization has produced results below 2eps, we drop them
@@ -304,40 +299,11 @@ end
             X[:, dropped] .-= Y * (BY' * X[:, dropped])
         end
 
-        if norm(BYX) < tol && niter > 1
-            push!(ninners, 0)
-            break
-        end
-        #X, ninner, growth_factor = ortho!(X; tol)
-        X, ninner, growth_factor = ortho_chol_n!(X; N=2)
-        push!(ninners, ninner)
-
-        # norm(BY'X) < tol && break should be the proper check, but
-        # usually unnecessarily costly. Instead, we predict the error
-        # according to the growth factor of the orthogonalization.
-        # Assuming BY'Y = 0 to machine precision, after the
-        # Y-orthogonalization, BY'X is O(eps), so BY'X will be bounded
-        # by O(eps * growth_factor).
-
-        # If we're at a fixed point, growth_factor is 1 and if tol > eps(),
-        # the loop will terminate, even if BY'Y != 0
-        #estimated_error = growth_factor * eps(real(T))
-        #estimated_error < tol && break
-
-        if niter > 10
-            U, _, V = svd(X)  # Fall back to gold standard
-            X = U*V'
-            @error("Ortho(X, Y) is failing badly, falling back to SVD",
-                   ninners=ninners, error=round(norm(BY'X); sigdigits=2), tol=tol,
-                   estimated_error=round(estimated_error; sigdigits=2))
-            return X
-        end
-        niter += 1
+        X = ortho_chol_n!(X; N=2)
     end
-    @debug "Required $ninners choleskys in ortho!(X, Y)"
 
-    # @assert (norm(BY'X)) < tol
-    # @assert (norm(X'X-I)) < tol
+    #@show (norm(BY'X))
+    #@show (norm(X'X-I))
 
     X
 end
