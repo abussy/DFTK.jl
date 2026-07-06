@@ -336,7 +336,6 @@ end
     end
     @debug "Required $ninners choleskys in ortho!(X, Y)"
 
-    @show norm(BY'X), norm(X'X - I), niter
     # @assert (norm(BY'X)) < tol
     # @assert (norm(X'X-I)) < tol
 
