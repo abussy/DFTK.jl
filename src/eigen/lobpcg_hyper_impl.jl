@@ -260,7 +260,7 @@ normest(M) = maximum(abs, diag(M)) + norm(M - Diagonal(diag(M)))
     (; X, nchol=nchol_total, growth_factor)
 end
 
-function ortho_chol_n!(X::AbstractArray{T}; N::Int=2) where {T}
+@timing function ortho_chol_n!(X::AbstractArray{T}; N::Int=2) where {T}
     try
         for _ = 1:N
             O = mul_hermi(X', X)
@@ -268,9 +268,7 @@ function ortho_chol_n!(X::AbstractArray{T}; N::Int=2) where {T}
             rdiv!(X, R)
         end
     catch err
-        U, _, V = svd(X)
-        X = U*V'
-        return X
+        ortho!(X).X
     end
 
     X
@@ -278,6 +276,8 @@ end
 
 # Randomize the columns of X if the norm is below tol
 function drop_small!(X::AbstractArray{T}; tol=2eps(real(T))) where {T}
+    #TODO: would first do a minimum(columnwise_norms(X)) <= tol be faster?,
+    #      for the cases where there is nothing to drop?
     dropped = findall(n -> n <= tol, columnwise_norms(X))
     @views randn!(TaskLocalRNG(), X[:, dropped])
     dropped
@@ -288,8 +288,19 @@ end
     # normalize to try to cheaply improve conditioning
     X ./= columnwise_norms(X)'
 
-    for niter = 1:3
+    #TODO: do a performance case study with tol=3eps and 4eps
+    #TODO: performance benchmarks on CPU and GPU, hopefully do not loose
+    #      time on CPU, and keep single code base
+    #TODO: add back the original comments + a few more to make sense of the CholeskyN
+
+    niter = 0
+    while true
         BYX = BY' * X
+
+        if niter > 1
+            norm(BYX) <= tol && break
+        end
+
         mul!(X, Y, BYX, -1, 1)  # X -= Y*BY'X
         # If the orthogonalization has produced results below 2eps, we drop them
         # This is to be able to orthogonalize eg [1;0] against [e^iθ;0],
@@ -299,8 +310,23 @@ end
             X[:, dropped] .-= Y * (BY' * X[:, dropped])
         end
 
-        X = ortho_chol_n!(X; N=2)
+        if niter > 1
+            X, _, growth_factor = ortho!(X; tol) # safer
+            estimated_error = growth_factor * eps(real(T))
+            estimated_error < tol && break
+        else
+            X = ortho_chol_n!(X; N=2) # faster
+        end
+
+        if niter > 10
+            @error("Failed to orthogonalize X vs Y after 10 iterations; this should never happen")
+        end
+
+        niter += 1
     end
+
+    #TODO: probably should go 2-2, then check X and BY'X, and keep looping with N=3
+    #TODO: probably need an escape clause, because potentially infinite loop
 
     #@show (norm(BY'X))
     #@show (norm(X'X-I))
