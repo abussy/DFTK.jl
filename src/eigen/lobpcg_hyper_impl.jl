@@ -278,6 +278,7 @@ end
 function drop_small!(X::AbstractArray{T}; tol=2eps(real(T))) where {T}
     #TODO: would first do a minimum(columnwise_norms(X)) <= tol be faster?,
     #      for the cases where there is nothing to drop?
+    #TODO: how expensive is this operation, actually?
     dropped = findall(n -> n <= tol, columnwise_norms(X))
     @views randn!(TaskLocalRNG(), X[:, dropped])
     dropped
@@ -293,6 +294,9 @@ end
     #      time on CPU, and keep single code base
     #TODO: add back the original comments + a few more to make sense of the CholeskyN
     #TODO: make sure NaN issue won't happen
+    
+    #TODO: more generally, profile the LOBPCG solver with syncs at all timings, to make sure we do not miss anything
+    #TODO: should we use eigen! instead of eigen to save on allocation?
 
     niter = 0
     while true
