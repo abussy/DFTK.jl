@@ -299,6 +299,11 @@ end
 
         if niter > 1
             norm(BYX) <= tol && break
+            #TODO: this sanity check might be necesary to convince people, but what is the cost?
+            #if norm(BYX) <= tol
+            #    # sanity check
+            #    norm(mul_hermi(X', X) - I) <= 2tol && break
+            #end
         end
 
         mul!(X, Y, BYX, -1, 1)  # X -= Y*BY'X
