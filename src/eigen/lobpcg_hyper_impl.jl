@@ -324,6 +324,10 @@ end
             X = ortho_chol_n!(X; N=2) # faster
         end
 
+        if niter > 10
+            @error("Failed to orthogonalize X vs Y after 10 iterations; this should never happen")
+        end
+
         niter += 1
     end
 
