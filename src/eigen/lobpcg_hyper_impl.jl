@@ -292,6 +292,7 @@ end
     #TODO: performance benchmarks on CPU and GPU, hopefully do not loose
     #      time on CPU, and keep single code base
     #TODO: add back the original comments + a few more to make sense of the CholeskyN
+    #TODO: make sure NaN issue won't happen
 
     niter = 0
     while true
@@ -321,10 +322,6 @@ end
             estimated_error < tol && break
         else
             X = ortho_chol_n!(X; N=2) # faster
-        end
-
-        if niter > 10
-            @error("Failed to orthogonalize X vs Y after 10 iterations; this should never happen")
         end
 
         niter += 1
