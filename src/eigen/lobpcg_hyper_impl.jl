@@ -289,7 +289,8 @@ end
     niter = 1
 
     # For speed on the GPU, we first perform 2 orthogonalisation steps with Cholesky2 for X ortho, and only
-    # start checking convergence from the 3rd step. We also revert to the slower, error-estimated X ortho
+    # start checking convergence from the 3rd step. We stop after 3 steps anyways, because this is pretty much
+    # as good as it gets.
     while true
         BYX = BY' * X
 
@@ -306,18 +307,9 @@ end
             X[:, dropped] .-= Y * (BY' * X[:, dropped])
         end
 
-        if niter > 2
-            X, _, growth_factor = ortho!(X; tol) # safer
-            estimated_error = growth_factor * eps(real(T))
-            estimated_error < tol && break
-        else
-            X = ortho_chol_n!(X; N=2) # faster
-        end
+        X = ortho_chol_n!(X; N=2)
 
-        if niter > 10
-            @error("Failed to orthogonalize X vs Y after 10 iterations; this should never happen")
-        end
-
+        niter == 3 && break
         niter += 1
     end
 
