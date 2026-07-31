@@ -276,9 +276,6 @@ end
 
 # Randomize the columns of X if the norm is below tol
 function drop_small!(X::AbstractArray{T}; tol=2eps(real(T))) where {T}
-    #TODO: would first do a minimum(columnwise_norms(X)) <= tol be faster?,
-    #      for the cases where there is nothing to drop?
-    #TODO: how expensive is this operation, actually?
     dropped = findall(n -> n <= tol, columnwise_norms(X))
     @views randn!(TaskLocalRNG(), X[:, dropped])
     dropped
@@ -289,38 +286,27 @@ end
     # normalize to try to cheaply improve conditioning
     X ./= columnwise_norms(X)'
 
-    #TODO: do a performance case study with tol=3eps and 4eps
-    #TODO: performance benchmarks on CPU and GPU, hopefully do not loose
-    #      time on CPU, and keep single code base
-    #TODO: add back the original comments + a few more to make sense of the CholeskyN
-    #TODO: make sure NaN issue won't happen
-    
-    #TODO: more generally, profile the LOBPCG solver with syncs at all timings, to make sure we do not miss anything
-    #TODO: should we use eigen! instead of eigen to save on allocation?
+    niter = 1
 
-    niter = 0
+    # For speed on the GPU, we first perform 2 orthogonalisation steps with Cholesky2 for X ortho, and only
+    # start checking convergence from the 3rd step. We also revert to the slower, error-estimated X ortho
     while true
         BYX = BY' * X
 
-        if niter > 1
+        if niter > 2
             norm(BYX) <= tol && break
-            #TODO: this sanity check might be necesary to convince people, but what is the cost?
-            #if norm(BYX) <= tol
-            #    # sanity check
-            #    norm(mul_hermi(X', X) - I) <= 2tol && break
-            #end
         end
 
         mul!(X, Y, BYX, -1, 1)  # X -= Y*BY'X
         # If the orthogonalization has produced results below 2eps, we drop them
         # This is to be able to orthogonalize eg [1;0] against [e^iθ;0],
         # as can happen in extreme cases in the ortho!(cP, cX)
-        dropped = drop_small!(X; tol) #TODO: can probably not do this if choleskyN
+        dropped = drop_small!(X; tol)
         if !isempty(dropped)
             X[:, dropped] .-= Y * (BY' * X[:, dropped])
         end
 
-        if niter > 1
+        if niter > 2
             X, _, growth_factor = ortho!(X; tol) # safer
             estimated_error = growth_factor * eps(real(T))
             estimated_error < tol && break
