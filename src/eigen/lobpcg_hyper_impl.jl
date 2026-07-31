@@ -302,10 +302,10 @@ end
         # If the orthogonalization has produced results below 2eps, we drop them
         # This is to be able to orthogonalize eg [1;0] against [e^iθ;0],
         # as can happen in extreme cases in the ortho!(cP, cX)
-        dropped = drop_small!(X; tol)
-        if !isempty(dropped)
-            X[:, dropped] .-= Y * (BY' * X[:, dropped])
-        end
+        #dropped = drop_small!(X; tol)
+        #if !isempty(dropped)
+        #    X[:, dropped] .-= Y * (BY' * X[:, dropped])
+        #end
 
         X = ortho_chol_n!(X; N=2)
 
