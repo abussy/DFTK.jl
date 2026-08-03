@@ -1,6 +1,7 @@
 using DftFunctionals
 import ForwardDiff: Dual
 import Libxc
+import LibXC
 
 # TODO: Observations for a future XC functional interface refactor:
 #   - The distinction between mgga and mggal makes no sense as some mggal don't have a τ
@@ -19,7 +20,7 @@ struct LibxcFunctional{Family,Kind} <: Functional{Family,Kind}
     needs_laplacian::Bool
 end
 function LibxcFunctional(identifier::Symbol)
-    fun = Libxc.Functional(identifier)
+    fun = LibXC.Functional(identifier)
     @assert fun.kind   in (:exchange, :correlation, :exchange_correlation)
     kind = Dict(:exchange => :x, :correlation => :c, :exchange_correlation => :xc)[fun.kind]
 
@@ -31,13 +32,13 @@ function LibxcFunctional(identifier::Symbol)
     else
         family = fun.family
     end
-    if family == :mgga && Libxc.needs_laplacian(fun)
+    if family == :mgga && LibXC.needs_laplacian(fun)
         family = :mggal
     end
     LibxcFunctional{family,kind}(identifier,
-                                 0 in Libxc.supported_derivatives(fun),  # has_energy
-                                 Libxc.needs_tau(fun),
-                                 Libxc.needs_laplacian(fun))
+                                 0 in LibXC.supported_derivatives(fun),  # has_energy
+                                 LibXC.needs_tau(fun),
+                                 LibXC.needs_laplacian(fun))
 end
 DftFunctionals.identifier(fun::LibxcFunctional)  = fun.identifier
 DftFunctionals.has_energy(func::LibxcFunctional) = func.has_energy
@@ -52,8 +53,8 @@ function DftFunctionals.energy_density(func::LibxcFunctional, ρ::AbstractMatrix
                                        σ=nothing, τ=nothing, Δρ=nothing)
     terms = (; )
     if has_energy(func)
-        libxcfun = Libxc.Functional(func.identifier; n_spin=size(ρ, 1))
-        terms = Libxc.evaluate(libxcfun; derivatives=0:0, rho=ρ, sigma=σ, tau=τ, lapl=Δρ)
+        libxcfun = LibXC.Functional(func.identifier; n_spin=size(ρ, 1))
+        terms = LibXC.evaluate(libxcfun; derivatives=0:0, rho=ρ, sigma=σ, tau=τ, lapl=Δρ)
     end
     libxc_energy_density(terms, ρ)
 end
@@ -107,9 +108,9 @@ end
 #
 function DftFunctionals.potential_terms(func::LibxcFunctional{:lda}, ρ::AbstractMatrix{Float64})
     s_ρ, n_p = size(ρ)
-    fun = Libxc.Functional(func.identifier; n_spin=s_ρ)
-    derivatives = filter(in(Libxc.supported_derivatives(fun)), 0:1)
-    terms = Libxc.evaluate(fun; rho=ρ, derivatives)
+    fun = LibXC.Functional(func.identifier; n_spin=s_ρ)
+    derivatives = filter(in(LibXC.supported_derivatives(fun)), 0:1)
+    terms = LibXC.evaluate(fun; rho=ρ, derivatives)
     e  = libxc_energy_density(terms, ρ)
     Vρ = reshape(terms.vrho, s_ρ, n_p)
     (; e, Vρ)
@@ -118,9 +119,9 @@ function DftFunctionals.potential_terms(func::LibxcFunctional{:gga}, ρ::Abstrac
                                         σ::AbstractMatrix{Float64})
     s_ρ, n_p = size(ρ)
     s_σ = size(σ, 1)
-    fun = Libxc.Functional(func.identifier; n_spin=s_ρ)
-    derivatives = filter(in(Libxc.supported_derivatives(fun)), 0:1)
-    terms = Libxc.evaluate(fun; rho=ρ, sigma=σ, derivatives)
+    fun = LibXC.Functional(func.identifier; n_spin=s_ρ)
+    derivatives = filter(in(LibXC.supported_derivatives(fun)), 0:1)
+    terms = LibXC.evaluate(fun; rho=ρ, sigma=σ, derivatives)
     e  = libxc_energy_density(terms, ρ)
     Vρ = reshape(terms.vrho,   s_ρ, n_p)
     Vσ = reshape(terms.vsigma, s_σ, n_p)
@@ -130,9 +131,9 @@ function DftFunctionals.potential_terms(func::LibxcFunctional{:mgga}, ρ::Abstra
                                         σ::AbstractMatrix{Float64}, τ::AbstractMatrix{Float64})
     s_ρ, n_p = size(ρ)
     s_σ = size(σ, 1)
-    fun = Libxc.Functional(func.identifier; n_spin=s_ρ)
-    derivatives = filter(in(Libxc.supported_derivatives(fun)), 0:1)
-    terms = Libxc.evaluate(fun; rho=ρ, sigma=σ, tau=τ, derivatives)
+    fun = LibXC.Functional(func.identifier; n_spin=s_ρ)
+    derivatives = filter(in(LibXC.supported_derivatives(fun)), 0:1)
+    terms = LibXC.evaluate(fun; rho=ρ, sigma=σ, tau=τ, derivatives)
     e  = libxc_energy_density(terms, ρ)
     Vρ = reshape(terms.vrho,   s_ρ, n_p)
     Vσ = reshape(terms.vsigma, s_σ, n_p)
@@ -146,9 +147,9 @@ function DftFunctionals.potential_terms(func::LibxcFunctional{:mggal},
                                         Δρ::AbstractMatrix{Float64})
     s_ρ, n_p = size(ρ)
     s_σ = size(σ, 1)
-    fun = Libxc.Functional(func.identifier; n_spin=s_ρ)
-    derivatives = filter(in(Libxc.supported_derivatives(fun)), 0:1)
-    terms = Libxc.evaluate(fun; rho=ρ, sigma=σ, tau=τ, lapl=Δρ, derivatives)
+    fun = LibXC.Functional(func.identifier; n_spin=s_ρ)
+    derivatives = filter(in(LibXC.supported_derivatives(fun)), 0:1)
+    terms = LibXC.evaluate(fun; rho=ρ, sigma=σ, tau=τ, lapl=Δρ, derivatives)
     e  = libxc_energy_density(terms, ρ)
     Vρ = reshape(terms.vrho,   s_ρ, n_p)
     Vσ = reshape(terms.vsigma, s_σ, n_p)
@@ -282,9 +283,9 @@ end
                                                ) where {N,T,DT<:Dual{T,Float64,N}}
     ρ = ForwardDiff.value.(ρ_δρ)
     s_ρ, n_p = size(ρ)
-    fun = Libxc.Functional(func.identifier; n_spin=s_ρ)
-    derivatives = filter(in(Libxc.supported_derivatives(fun)), 0:2)
-    terms = Libxc.evaluate(fun; rho=ρ, derivatives)
+    fun = LibXC.Functional(func.identifier; n_spin=s_ρ)
+    derivatives = filter(in(LibXC.supported_derivatives(fun)), 0:2)
+    terms = LibXC.evaluate(fun; rho=ρ, derivatives)
     e = libxc_energy_density(terms, ρ)
     Vρ = reshape(terms.vrho, s_ρ, n_p)
     Vρρ = terms.v2rho2
@@ -306,9 +307,9 @@ end
     σ = ForwardDiff.value.(σ_δσ)
     s_ρ, n_p = size(ρ)
     s_σ = size(σ, 1)
-    fun = Libxc.Functional(func.identifier; n_spin=s_ρ)
-    derivatives = filter(in(Libxc.supported_derivatives(fun)), 0:2)
-    terms = Libxc.evaluate(fun; rho=ρ, sigma=σ, derivatives)
+    fun = LibXC.Functional(func.identifier; n_spin=s_ρ)
+    derivatives = filter(in(LibXC.supported_derivatives(fun)), 0:2)
+    terms = LibXC.evaluate(fun; rho=ρ, sigma=σ, derivatives)
     e  = libxc_energy_density(terms, ρ)
     Vρ = reshape(terms.vrho,   s_ρ, n_p)
     Vσ = reshape(terms.vsigma, s_σ, n_p)
@@ -342,9 +343,9 @@ end
     τ = ForwardDiff.value.(τ_δτ)
     s_ρ, n_p = size(ρ)
     s_σ = size(σ, 1)
-    fun = Libxc.Functional(func.identifier; n_spin=s_ρ)
-    derivatives = filter(in(Libxc.supported_derivatives(fun)), 0:2)
-    terms = Libxc.evaluate(fun; rho=ρ, sigma=σ, tau=τ, derivatives)
+    fun = LibXC.Functional(func.identifier; n_spin=s_ρ)
+    derivatives = filter(in(LibXC.supported_derivatives(fun)), 0:2)
+    terms = LibXC.evaluate(fun; rho=ρ, sigma=σ, tau=τ, derivatives)
     e  = libxc_energy_density(terms, ρ)
     Vρ = reshape(terms.vrho,   s_ρ, n_p)
     Vσ = reshape(terms.vsigma, s_σ, n_p)
@@ -393,9 +394,9 @@ end
     l = ForwardDiff.value.(l_δl)
     s_ρ, n_p = size(ρ)
     s_σ = size(σ, 1)
-    fun = Libxc.Functional(func.identifier; n_spin=s_ρ)
-    derivatives = filter(in(Libxc.supported_derivatives(fun)), 0:2)
-    terms = Libxc.evaluate(fun; rho=ρ, sigma=σ, tau=τ, lapl=l, derivatives)
+    fun = LibXC.Functional(func.identifier; n_spin=s_ρ)
+    derivatives = filter(in(LibXC.supported_derivatives(fun)), 0:2)
+    terms = LibXC.evaluate(fun; rho=ρ, sigma=σ, tau=τ, lapl=l, derivatives)
     e  = libxc_energy_density(terms, ρ)
 
     Vρ = reshape(terms.vrho,   s_ρ, n_p)
@@ -498,12 +499,12 @@ hybrid_parameters(::Functional{:mgga})  = nothing
 hybrid_parameters(::Functional{:mggal}) = nothing
 hybrid_parameters(fun::DispatchFunctional) = hybrid_parameters(fun.inner)
 function hybrid_parameters(libxcfun::LibxcFunctional)
-    fxc = Libxc.Functional(libxcfun.identifier)
-    if Libxc.is_global_hybrid(fxc)
+    fxc = LibXC.Functional(libxcfun.identifier)
+    if LibXC.is_global_hybrid(fxc)
         exx_lr = exx_sr = fxc.exx_coefficient
         return (; exx_lr, exx_sr,
                   range_separation_parameter=nothing, range_separation_kernel=nothing)
-    elseif Libxc.is_range_separated(fxc)
+    elseif LibXC.is_range_separated(fxc)
         exx_lr = fxc.cam_alpha
         exx_sr = fxc.cam_alpha + fxc.cam_beta
 
