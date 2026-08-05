@@ -1,4 +1,4 @@
-### GPU-specific implementations of functions called during LOBPCG
+### GPU-specific linear algebra helpers
 # The massive parallelism of the GPU can only be fully exploited when
 # operating on whole arrays. For performance reasons, one should avoid
 # explicitly looping over columns or elements. This approach is not
@@ -7,12 +7,6 @@
 
 using LinearAlgebra
 using GPUArraysCore
-
-function compute_λ(X::AbstractGPUArray{T}, AX::AbstractGPUArray{T}, BX::AbstractGPUArray{T}) where {T}
-    num = sum(conj(X) .* AX, dims=1)
-    den = sum(conj(X) .* BX, dims=1)
-    vec(real.(num ./ den))
-end
 
 function columnwise_dots(A::AbstractGPUArray{T}, B::AbstractGPUArray{T}) where {T}
     vec(sum(conj(A) .* B; dims=1))

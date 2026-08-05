@@ -2,6 +2,7 @@ module DFTK
 
 using DocStringExtensions
 using LinearAlgebra
+using LOBPCGEigensolver
 using Markdown
 using Printf
 using TimerOutputs
