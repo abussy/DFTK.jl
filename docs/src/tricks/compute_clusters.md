@@ -398,7 +398,7 @@ export CUDA_CACHE_PATH="/path_to_existing_folder_on_scratch"
 
 my_project="/absolute_path_to_julia_project"
 
-srun julia --project=$my_project example.jl > example.out
+srun julia --project=$my_project --compiled-modules=strict example.jl > example.out
 ```
 
 ### Special notes on NVIDIA clusters
