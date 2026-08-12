@@ -3,6 +3,8 @@ using AMDGPU
 using PrecompileTools
 using LinearAlgebra
 import DFTK: CPU, GPU, precompilation_workflow
+import DFTK: LibxcDispatchFloat, LibxcDispatchFloatEnergy, DispatchFunctional
+using DftFunctionals
 using DFTK
 
 DFTK.synchronize_device(::GPU{<:AMDGPU.ROCArray}) = AMDGPU.synchronize()
@@ -11,15 +13,12 @@ function DFTK.memory_usage(::GPU{<:AMDGPU.ROCArray})
     merge(DFTK.memory_usage(CPU()), (; gpu=AMDGPU.memory_stats().live))
 end
 
-# Temporary workaround to not trigger https://github.com/JuliaGPU/AMDGPU.jl/issues/734
-function LinearAlgebra.cholesky(A::Hermitian{T, <:AMDGPU.ROCArray}) where {T}
-    Acopy, info = AMDGPU.rocSOLVER.potrf!(A.uplo, copy(A.data))
-    LinearAlgebra.Cholesky(Acopy, A.uplo, info)
+function DftFunctionals.potential_terms(fun::DispatchFunctional,
+                                        ρ::AMDGPU.ROCMatrix{<:LibxcDispatchFloat}, args...)
+    potential_terms(fun.inner, ρ, args...)
 end
-
-# Temporary workaround for SVD. See https://github.com/JuliaGPU/AMDGPU.jl/issues/837
-function LinearAlgebra.LAPACK.gesdd!(jobz::Char, A::AMDGPU.ROCArray{T}) where {T}
-    AMDGPU.rocSOLVER.gesvd!(jobz, jobz, A)
+function DftFunctionals.energy_density(fun::DispatchFunctional, ρ::AMDGPU.ROCMatrix{<:LibxcDispatchFloatEnergy}, args...)
+    energy_density(fun.inner, ρ, args...)
 end
 
 # Temporary workaround for 5-argumet mul!, where performance is very bad when array
@@ -39,7 +38,7 @@ end
 # Ensure precompilation is only performed if an AMD GPU is available
 # AMDGPU pre-compiliation is currently broken on Julia > 1.10,
 # see https://github.com/JuliaMolSim/DFTK.jl/issues/1278
-if AMDGPU.functional() && VERSION < v"1.11"
+if AMDGPU.functional() && !(v"1.11" <= VERSION < v"1.12")
     # Precompilation block with a basic workflow
     @setup_workload begin
         # very artificial silicon ground state example
