@@ -12,7 +12,7 @@
 #     Not all features of DFTK are ported to the GPU. As of August 2026, 
 #     SCF, forces, stresses, and response calculations are supported with 
 #     all standard Libxc functionals (at LDA, GGA and mGGA level).
-#     In most cases there is no intrinsic limitationm and it typically only takes
+#     In most cases there is no intrinsic limitation, and it typically only takes
 #     minor code modifications to make it work on GPUs (and some extra work for 
 #     optimization). If you require GPU support in one of our routines, where this is not
 #     yet supported, feel free to open an issue on github or otherwise get in touch.
