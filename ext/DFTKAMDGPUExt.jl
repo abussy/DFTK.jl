@@ -11,19 +11,9 @@ function DFTK.memory_usage(::GPU{<:AMDGPU.ROCArray})
     merge(DFTK.memory_usage(CPU()), (; gpu=AMDGPU.memory_stats().live))
 end
 
-# Temporary workaround for 5-argumet mul!, where performance is very bad when array
-# element types and scaling factors types differ.
-# See https://github.com/JuliaGPU/AMDGPU.jl/issues/866#issuecomment-3636981853
-# Scaling a Float/Complex matrix with an Integer:
-function LinearAlgebra.mul!(C::AMDGPU.ROCArray{T}, A::AMDGPU.ROCArray{T}, B::AMDGPU.ROCArray{T},
-                            α::U, β::U) where {T<:Union{AbstractFloat,Complex}, U<:Integer}
-    LinearAlgebra.mul!(C, A, B, T(α), T(β))
-end
-# Scaling a Complex matrix with a Float:
-function LinearAlgebra.mul!(C::AMDGPU.ROCArray{T}, A::AMDGPU.ROCArray{T}, B::AMDGPU.ROCArray{T},
-                            α::U, β::U) where {T<:Complex, U<:AbstractFloat}
-    LinearAlgebra.mul!(C, A, B, T(α), T(β))
-end
+# Additional performance-related workarounds and fixes can be found in the file
+# ext/LOBPCGEigensolverAMDGPUExt.jl in https://github.com/JuliaMolSim/LOBPCGEigensolver.jl
+# As of August 2026 this is mostly for the 5-argument mul! function.
 
 # Ensure precompilation is only performed if an AMD GPU is available
 # AMDGPU pre-compiliation is currently broken on Julia 1.11,
