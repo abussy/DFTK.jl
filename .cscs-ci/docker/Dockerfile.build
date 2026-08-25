@@ -1,0 +1,20 @@
+# Extend the CSCS container-builder with a Julia image
+FROM julia:1.12 as builder
+
+RUN mkdir -p /opt/cuda_cache
+ENV JULIA_DEPOT_PATH=/opt/julia-depot
+ENV CUDA_CACHE_PATH=/opt/cuda_cache
+
+COPY . /dftk_source
+WORKDIR /dftk_source
+
+# Add CUDA and precompile DFTK and DFTKCUDAExt
+RUN julia --project=. -e '\
+    using Pkg; \
+    Pkg.add("CUDA"); \
+    using CUDA; \
+    CUDA.set_runtime_version!(v"13.0");' \
+    && julia --project=. -e '\
+    Pkg.devlelop(path="/dftk_source"); \
+    using DFTK; \
+    using CUDA;'
