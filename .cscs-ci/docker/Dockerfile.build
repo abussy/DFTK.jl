@@ -1,4 +1,4 @@
-# Extend the CSCS container-builder with a Julia image
+# Use and existing Julia image as a base
 FROM docker.io/library/julia:1.12 AS builder
 
 RUN mkdir -p /opt/cuda_cache
