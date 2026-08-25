@@ -24,4 +24,4 @@ test:
     SLURM_NTASKS: 1
     SLURM_TIMELIMIT: "00:30:00"
   script:
-    - julia --project=TestEnv -e 'using Pkg; Pkg.test("DFTK"; test_args = ["gpu"])'
+    - /usr/local/julia/bin/julia --project="/dftk_source/TestEnv" -e 'using Pkg; Pkg.test("DFTK"; test_args = ["gpu"])'
