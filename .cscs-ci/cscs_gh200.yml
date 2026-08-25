@@ -23,5 +23,6 @@ test:
     SLURM_JOB_NUM_NODES: 1 #TODO: do we need to configure MPI, if so need a way around imitating srun --pty bash
     SLURM_NTASKS: 1
     SLURM_TIMELIMIT: "00:30:00"
+    SLURM_MPI_TYPE: none
   script:
     - /usr/local/julia/bin/julia --project="/dftk_source/TestEnv" -e 'using Pkg; Pkg.test("DFTK"; test_args = ["gpu"])'
