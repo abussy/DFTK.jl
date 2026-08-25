@@ -6,6 +6,9 @@ ENV JULIA_DEPOT_PATH=/opt/julia-depot
 COPY . /dftk_source
 WORKDIR /dftk_source
 
+# TODO: probably want to build a GPU libxc for the sepcific GPU architecture in the future
+#       Either this, or we want a CUDA_CACHE_PATH that is persistent across CI jobs
+
 # Add CUDA and precompile DFTK
 RUN julia --project="/dftk_source/TestEnv" -e '\
     using Pkg; \

@@ -6,17 +6,17 @@ stages:
   - test
 
 variables:
-  PERSIST_IMAGE_NAME: $CSCS_REGISTRY_PATH/aarch64/dftk-gpu:$CI_COMMIT_SHORT_SHA
+  PERSIST_IMAGE_NAME: $CSCS_REGISTRY_PATH/x86_64/dftk-gpu:$CI_COMMIT_SHORT_SHA
 
 build:
   stage: build
-  extends: .container-builder-cscs-gh200
+  extends: .container-builder-cscs-zen2
   variables:
     DOCKERFILE: .cscs-ci/docker/Dockerfile.build
 
 test:
   stage: test
-  extends: .container-runner-daint-gh200
+  extends: .container-runner-beverin-mi300
   needs: [build]
   image: $PERSIST_IMAGE_NAME
   variables:
