@@ -13,8 +13,10 @@ RUN julia --project=. -e '\
     using Pkg; \
     Pkg.add("CUDA"); \
     using CUDA; \
-    CUDA.set_runtime_version!(v"13.0");' \
-    && julia --project=. -e '\
+    CUDA.set_runtime_version!(v"13.0");'
+
+RUN julia --project=. -e '\
+    using Pkg; \
     Pkg.devlelop(path="/dftk_source"); \
     using DFTK; \
     using CUDA;'
