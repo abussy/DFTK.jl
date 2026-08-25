@@ -17,6 +17,6 @@ RUN julia --project=. -e '\
 
 RUN julia --project=. -e '\
     using Pkg; \
-    Pkg.devlelop(path="/dftk_source"); \
+    Pkg.develop(path="/dftk_source"); \
     using DFTK; \
     using CUDA;'
