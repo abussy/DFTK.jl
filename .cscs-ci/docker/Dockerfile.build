@@ -7,7 +7,6 @@ ENV CUDA_CACHE_PATH=/opt/cuda_cache
 
 COPY . /dftk_source
 
-
 # Add CUDA and precompile DFTK
 RUN julia --project=TestEnv -e '\
     using Pkg; \
