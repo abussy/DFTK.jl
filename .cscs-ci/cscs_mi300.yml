@@ -25,4 +25,4 @@ test:
     SLURM_TIMELIMIT: "00:45:00"
     SLURM_MPI_TYPE: none
   script:
-    - /usr/local/julia/bin/julia --project="/dftk_source/TestEnv" -e 'using Pkg; Pkg.test("DFTK"; test_args = ["gpu"])'
+    - /julia-1.12.7/bin/julia --project="/dftk_source/TestEnv" -e 'using Pkg; Pkg.test("DFTK"; test_args = ["gpu"])'
