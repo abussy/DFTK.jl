@@ -12,7 +12,7 @@ build:
   stage: build
   extends: .container-builder-cscs-zen2
   variables:
-    DOCKERFILE: .cscs-ci/docker/Dockerfile.build
+    DOCKERFILE: .cscs-ci/docker/Dockerfile.build-mi300
 
 test:
   stage: test

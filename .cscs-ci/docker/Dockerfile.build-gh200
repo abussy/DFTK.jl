@@ -9,8 +9,9 @@ WORKDIR /dftk_source
 # TODO: probably want to build a GPU libxc for the sepcific GPU architecture in the future
 #       Either this, or we want a CUDA_CACHE_PATH that is persistent across CI jobs
 # TODO: generally, we might want to find a way not to re-download everythiing when we call Pkg.test()
+#       we could also not call "using DFTK", and maybe save some time that way
 
-# Add CUDA and precompile DFTK
+# Add CUDA and precompile DFTK. Set CUDA version for insured Libxc_GPU_jll availability.
 RUN julia --project="/dftk_source/TestEnv" -e '\
     using Pkg; \
     Pkg.add("CUDA"); \
