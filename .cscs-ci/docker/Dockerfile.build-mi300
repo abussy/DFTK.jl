@@ -1,5 +1,5 @@
 # Use and existing Julia image as a base
-FROM rocm/dev-ubuntu-24.04:6.4 AS builder
+FROM rocm/dev-ubuntu-24.04:6.3 AS builder
 
 ENV JULIA_DEPOT_PATH=/opt/julia-depot
 
