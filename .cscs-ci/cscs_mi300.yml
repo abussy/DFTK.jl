@@ -23,7 +23,7 @@ test:
     - export JULIA_DEPOT_PATH="$CI_PROJECT_DIR/.julia"
 
     # Run DFTK GPU tests
-    - julia --project="TestEnv" -e 'using Pkg; Pkg.develop(path="$CI_PROJECT_DIR/DFTK.jl")'
+    - julia --project="TestEnv" -e 'using Pkg; Pkg.develop(path="./DFTK.jl")'
     - julia --project="TestEnv" -e 'using Pkg; Pkg.test(""test_args = ["gpu"])'
 
   after_script:
