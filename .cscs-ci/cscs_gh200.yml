@@ -24,5 +24,6 @@ test:
     SLURM_NTASKS: 1
     SLURM_TIMELIMIT: "00:45:00"
     SLURM_MPI_TYPE: none
+    CUDA_CACHE_PATH: "/cuda_cache"
   script:
-    - /usr/local/julia/bin/julia --project="/dftk_source/TestEnv" -e 'using Pkg; Pkg.test("DFTK"; test_args = ["gpu"])'
+    - /usr/local/julia/bin/julia --project="/TestEnv" -e 'using Pkg; Pkg.test("DFTK"; test_args = ["gpu"])'

@@ -1,25 +1,21 @@
 # Use and existing Julia image as a base
 FROM docker.io/library/julia:1.12 AS builder
 
-ENV JULIA_DEPOT_PATH=/opt/julia-depot
+mkdir -p /cuda_cache
+ENV CUDA_CACHE_PATH=/cuda_cache
 
 COPY . /dftk_source
 WORKDIR /dftk_source
 
-# TODO: probably want to build a GPU libxc for the sepcific GPU architecture in the future
-#       Either this, or we want a CUDA_CACHE_PATH that is persistent across CI jobs
-# TODO: generally, we might want to find a way not to re-download everythiing when we call Pkg.test()
-#       we could also not call "using DFTK", and maybe save some time that way
-
 # Add CUDA and precompile DFTK. Set CUDA version for insured Libxc_GPU_jll availability.
-RUN julia --project="/dftk_source/TestEnv" -e '\
+RUN julia --project="/TestEnv" -e '\
     using Pkg; \
     Pkg.add("CUDA"); \
     using CUDA; \
     CUDA.set_runtime_version!(v"13.0");'
 
 # DFTKCUDAExt cannot be precompiled here, because NVIDIA drivers are lacking
-RUN julia --project="/dftk_source/TestEnv" -e '\
+RUN julia --project="/TestEnv" -e '\
     using Pkg; \
     Pkg.develop(path="/dftk_source"); \
     using DFTK;'
