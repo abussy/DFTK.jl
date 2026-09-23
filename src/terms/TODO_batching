@@ -1,0 +1,4 @@
+- Create a new BatchedNonlocalOperator
+- Try and abstract away some of the batching loop
+- Clean-up nonlocal and only keep necessary functions
+- Maybe pass the batch_size in arch rather than basis

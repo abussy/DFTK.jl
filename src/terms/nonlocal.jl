@@ -205,20 +205,11 @@ This is a highly optimized, GPU compatible function.
 """
 function build_projector_form_factors(psp::NormConservingPsp,
                                       G_plus_k::AbstractVector{Vec3{T}}) where {T}
-    Gpk = to_cpu(G_plus_k)
     arch = architecture(G_plus_k)
+    p = map(norm, G_plus_k)
 
-    iG2ifnorm_cpu = zeros(Int, length(Gpk))
-    norm_indices = IdDict{T, Int}()
-    for (iG, G) in enumerate(Gpk)
-        p = norm(G)
-        iG2ifnorm_cpu[iG] = get!(norm_indices, p, length(norm_indices) + 1)
-    end
-    iG2ifnorm = to_device(arch, iG2ifnorm_cpu)
-
-    ni_pairs = collect(pairs(norm_indices))
-    ps = to_device(arch, first.(ni_pairs))
-    p_indices = to_device(arch, last.(ni_pairs))
+    (; ps, iG2ifnorm, indices) = _unique_norms_and_mapping(p)
+    p_indices = indices
 
     n_proj = count_n_proj(psp)
     form_factors = similar(G_plus_k, Complex{T}, length(G_plus_k), n_proj)
