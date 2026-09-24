@@ -2,9 +2,9 @@
 Returns the unique norms of input vector 'Gs' and a mapping such that\
 norm(Gs[i]) = unique_ps[iG2ifnorm[i]]. Runs on CPU and GPU.
 """
-function unique_norms_and_mapping(Gs::AbstractVector{<:Vec3})
+function unique_norms_and_mapping(Gs::AbstractArray{<:Vec3})
     # Sort the norms and remember where each original element were
-    ps = map(norm, Gs)
+    ps = vec(map(norm, Gs))
     perm = sortperm(ps)
     sorted_ps = ps[perm]
 
