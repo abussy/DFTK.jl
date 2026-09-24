@@ -1,30 +1,26 @@
-# Return the unique values of a norm vector and a mapping from every input index
-# to the corresponding unique entry.
-#
-# The implementation is array-level and works for both CPU and GPU arrays:
-# it uses sortperm/cumsum/indexed assignment instead of a dictionary loop, so the
-# whole operation can stay on the device for GPU architectures.
-function _unique_norms_and_mapping(p::AbstractVector{T}) where {T <: Real}
-    # Sort the norms and remember where each original element landed.
-    perm = sortperm(p)
-    sorted_p = p[perm]
+"""
+Returns the unique norms of input vector 'Gs' and a mapping such that\
+norm(Gs[i]) = unique_ps[iG2ifnorm[i]]. Runs on CPU and GPU.
+"""
+function unique_norms_and_mapping(Gs::AbstractVector{Vec3{T}}) where {T}
+    # Sort the norms and remember where each original element were
+    ps = map(norm, Gs)
+    perm = sortperm(ps)
+    sorted_ps = p[perm]
 
-    # Mark the first occurrence of each distinct value in the sorted list.
-    diffs = diff(sorted_p)
-    isnew = similar(sorted_p, Bool, length(sorted_p))
+    # Mark the first occurrence of each distinct value in the sorted list
+    diffs = diff(sorted_ps)
+    isnew = similar(sorted_ps, Bool, length(sorted_ps))
     isnew[1:1] .= true
     isnew[2:end] .= diffs .!= zero(T)
 
-    # Cumulative sum turns the true/false flags into consecutive unique-group IDs
-    # in the sorted order; scatter them back to the original G-vector order.
+    # Use cumulative sum to assign a unique group id to each distinct value
     group_id_sorted = cumsum(isnew)
     iG2ifnorm = similar(group_id_sorted)
     iG2ifnorm[perm] = group_id_sorted
 
-    # Keep only the unique norms and the trivial row indices used by callers.
-    unique_p = sorted_p[isnew]
-    indices = to_device(architecture(unique_p), collect(1:length(unique_p)))
+    # Keep only the unique norms
+    unique_ps = sorted_ps[isnew]
 
-    ps = unique_p
-    (; ps, iG2ifnorm, indices)
+    (; unique_ps, iG2ifnorm)
 end

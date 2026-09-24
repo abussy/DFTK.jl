@@ -73,15 +73,15 @@ Additionally, returns a mapping from any G index to the corresponding entry in t
 """
 function atomic_local_form_factors(basis::PlaneWaveBasis{T}; q=zero(Vec3{T})) where {T}
     B = basis.model.recip_lattice
-    Gvecs = vec(G_vectors(basis))
-    p = map(G -> norm(B * (G + q)), Gvecs)
+    Gqs_cart = map(G -> B * (G + q), G_vectors(basis))
 
-    (; ps, iG2ifnorm, indices) = _unique_norms_and_mapping(p)
+    # For efficiency, get unique norms |G| and the mapping such that norm(G[i]) = unique_ps[iG2ifnorm[i]]
+    unique_ps, iG2ifnorm = unique_norms_and_mapping(Gqs_cart)
 
-    form_factors = similar(ps, length(indices), length(basis.model.atom_groups))
+    form_factors = similar(unique_ps, length(unique_ps), length(basis.model.atom_groups))
     for (igroup, group) in enumerate(basis.model.atom_groups)
         element = basis.model.atoms[first(group)]
-        @inbounds form_factors[indices, igroup] .= local_potential_fourier(element, ps)
+        @inbounds form_factors[:, igroup] .= local_potential_fourier(element, unique_ps)
     end
 
     (; form_factors, iG2ifnorm)
