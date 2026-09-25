@@ -55,6 +55,7 @@ end
 # Simple BLAS-capable matmul for Dual-valued matrices.
 # We extract the value and each partial into plain arrays, call ordinary
 # (BLAS-backed) matmul on those, and rebuild the Dual result.
+# TODO: would be nice to have dual and values as ForwardDiff overloads as in the beginning of this file
 function _dual_value_and_partials(A::AbstractMatrix{<:Dual}, N::Int)
     (ForwardDiff.value.(A), ntuple(p -> ForwardDiff.partials.(A, p), N))
 end
@@ -111,6 +112,7 @@ function LinearAlgebra.mul!(C::AbstractMatrix{Dual{T,V,N}},
     C
 end
 
+#TODO: Could we easily merge the Complex{Dual} case and standard Dual case with smart typing?
 function LinearAlgebra.mul!(C::AbstractMatrix{Complex{Dual{T,V,N}}},
                             A::AbstractMatrix, B::AbstractMatrix,
                             α::Number, β::Number) where {T,V,N}
@@ -164,6 +166,8 @@ function LinearAlgebra.mul!(C::AbstractMatrix{Complex{Dual{T,V,N}}},
                             A::AbstractMatrix, B::AbstractMatrix) where {T,V,N}
     LinearAlgebra.mul!(C, A, B, true, false)
 end
+
+#TODO: add Base.:* overloads to make it explicit
 
 function build_fft_plans!(tmp::AbstractArray{Complex{T}}) where {T<:Dual}
     opFFT  = AbstractFFTs.plan_fft(tmp)
