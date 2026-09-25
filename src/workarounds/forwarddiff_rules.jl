@@ -52,6 +52,119 @@ function Base.:*(p::AbstractFFTs.Plan, x::AbstractArray{<:Complex{<:Dual{Tg}}}) 
     dual_fft_mul(p, x)
 end
 
+# Simple BLAS-capable matmul for Dual-valued matrices.
+# We extract the value and each partial into plain arrays, call ordinary
+# (BLAS-backed) matmul on those, and rebuild the Dual result.
+function _dual_value_and_partials(A::AbstractMatrix{<:Dual}, N::Int)
+    (ForwardDiff.value.(A), ntuple(p -> ForwardDiff.partials.(A, p), N))
+end
+function _dual_value_and_partials(A::AbstractMatrix{<:Real}, N::Int)
+    (A, ntuple(_ -> nothing, N))
+end
+function _dual_value_and_partials(A::AbstractMatrix{<:Complex{<:Dual}}, N::Int)
+    (ForwardDiff.value.(A), ntuple(p -> ForwardDiff.partials.(A, p), N))
+end
+function _dual_value_and_partials(A::AbstractMatrix{<:Complex}, N::Int)
+    (A, ntuple(_ -> nothing, N))
+end
+
+function LinearAlgebra.mul!(C::AbstractMatrix{Dual{T,V,N}},
+                            A::AbstractMatrix, B::AbstractMatrix,
+                            α::Number, β::Number) where {T,V,N}
+    A_val, A_parts = _dual_value_and_partials(A, N)
+    B_val, B_parts = _dual_value_and_partials(B, N)
+
+    C_val = similar(C, V)
+    if iszero(β)
+        fill!(C_val, zero(V))
+    else
+        C_val .= ForwardDiff.value.(C)
+    end
+    mul!(C_val, A_val, B_val, α, β)
+
+    C_parts = ntuple(N) do p
+        Cp = similar(C, V)
+        if iszero(β)
+            fill!(Cp, zero(V))
+        else
+            Cp .= ForwardDiff.partials.(C, p)
+        end
+        Ap = A_parts[p]
+        Bp = B_parts[p]
+        if isnothing(Ap) && isnothing(Bp)
+            # Cp already contains β*∂C_p
+        elseif isnothing(Ap)
+            mul!(Cp, A_val, Bp, α, β)
+        elseif isnothing(Bp)
+            mul!(Cp, Ap, B_val, α, β)
+        else
+            mul!(Cp, Ap, B_val, α, β)
+            mul!(Cp, A_val, Bp, α, true)
+        end
+        Cp
+    end
+
+    for idx in eachindex(C)
+        partials_tuple = ntuple(p -> C_parts[p][idx], N)
+        C[idx] = Dual{T,V,N}(C_val[idx], ForwardDiff.Partials{N,V}(partials_tuple))
+    end
+    C
+end
+
+function LinearAlgebra.mul!(C::AbstractMatrix{Complex{Dual{T,V,N}}},
+                            A::AbstractMatrix, B::AbstractMatrix,
+                            α::Number, β::Number) where {T,V,N}
+    A_val, A_parts = _dual_value_and_partials(A, N)
+    B_val, B_parts = _dual_value_and_partials(B, N)
+
+    C_val = similar(C, Complex{V})
+    if iszero(β)
+        fill!(C_val, zero(Complex{V}))
+    else
+        C_val .= ForwardDiff.value.(C)
+    end
+    mul!(C_val, A_val, B_val, α, β)
+
+    C_parts = ntuple(N) do p
+        Cp = similar(C, Complex{V})
+        if iszero(β)
+            fill!(Cp, zero(Complex{V}))
+        else
+            Cp .= ForwardDiff.partials.(C, p)
+        end
+        Ap = A_parts[p]
+        Bp = B_parts[p]
+        if isnothing(Ap) && isnothing(Bp)
+            # Cp already contains β*∂C_p
+        elseif isnothing(Ap)
+            mul!(Cp, A_val, Bp, α, β)
+        elseif isnothing(Bp)
+            mul!(Cp, Ap, B_val, α, β)
+        else
+            mul!(Cp, Ap, B_val, α, β)
+            mul!(Cp, A_val, Bp, α, true)
+        end
+        Cp
+    end
+
+    for idx in eachindex(C)
+        cval = C_val[idx]
+        cpart = ntuple(p -> C_parts[p][idx], N)
+        C[idx] = Complex(Dual{T,V,N}(real(cval), ForwardDiff.Partials{N,V}(ntuple(p -> real(cpart[p]), N))),
+                         Dual{T,V,N}(imag(cval), ForwardDiff.Partials{N,V}(ntuple(p -> imag(cpart[p]), N))))
+    end
+    C
+end
+
+function LinearAlgebra.mul!(C::AbstractMatrix{Dual{T,V,N}},
+                            A::AbstractMatrix, B::AbstractMatrix) where {T,V,N}
+    LinearAlgebra.mul!(C, A, B, true, false)
+end
+function LinearAlgebra.mul!(C::AbstractMatrix{Complex{Dual{T,V,N}}},
+                            A::AbstractMatrix, B::AbstractMatrix) where {T,V,N}
+    LinearAlgebra.mul!(C, A, B, true, false)
+end
+
 function build_fft_plans!(tmp::AbstractArray{Complex{T}}) where {T<:Dual}
     opFFT  = AbstractFFTs.plan_fft(tmp)
     opBFFT = AbstractFFTs.plan_bfft(tmp)
