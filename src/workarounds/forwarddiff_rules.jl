@@ -69,24 +69,45 @@ function _dual_value_and_partials(A::AbstractMatrix{<:Complex}, N::Int)
     (A, ntuple(_ -> nothing, N))
 end
 
-function LinearAlgebra.mul!(C::AbstractMatrix{Dual{T,V,N}},
-                            A::AbstractMatrix, B::AbstractMatrix,
-                            α::Number, β::Number) where {T,V,N}
+const _DualOrComplexDual{T,V,N} = Union{Dual{T,V,N}, Complex{Dual{T,V,N}}}
+
+# Helpers to dispatch on whether the Dual matrix is real or complex.
+_dual_valtype(::Type{Dual{T,V,N}}) where {T,V,N} = V
+_dual_valtype(::Type{Complex{Dual{T,V,N}}}) where {T,V,N} = Complex{V}
+
+_dual_reconstruct(::Type{Dual{T,V,N}}, val, partials::NTuple{N,V}) where {T,V,N} =
+    Dual{T,V,N}(val, ForwardDiff.Partials{N,V}(partials))
+function _dual_reconstruct(::Type{Complex{Dual{T,V,N}}}, val::Complex{V},
+                           partials::NTuple{N,Complex{V}}) where {T,V,N}
+    Complex(
+        Dual{T,V,N}(real(val),
+                    ForwardDiff.Partials{N,V}(ntuple(i -> real(partials[i]), N))),
+        Dual{T,V,N}(imag(val),
+                    ForwardDiff.Partials{N,V}(ntuple(i -> imag(partials[i]), N))),
+    )
+end
+
+#TODO: may want to only do the 3-argument mul! for simplicity. Check timings and see if
+#      any major diff with 3- and 5-argument mul!. May also start with 3, and ask question in PR
+function LinearAlgebra.mul!(C::AbstractMatrix{E}, A::AbstractMatrix, B::AbstractMatrix,
+                            α::Number=true, β::Number=false) where {T,V,N,
+    E<:_DualOrComplexDual{T,V,N}}
     A_val, A_parts = _dual_value_and_partials(A, N)
     B_val, B_parts = _dual_value_and_partials(B, N)
 
-    C_val = similar(C, V)
+    VT = _dual_valtype(E)
+    C_val = similar(C, VT)
     if iszero(β)
-        fill!(C_val, zero(V))
+        fill!(C_val, zero(VT))
     else
         C_val .= ForwardDiff.value.(C)
     end
     mul!(C_val, A_val, B_val, α, β)
 
     C_parts = ntuple(N) do p
-        Cp = similar(C, V)
+        Cp = similar(C, VT)
         if iszero(β)
-            fill!(Cp, zero(V))
+            fill!(Cp, zero(VT))
         else
             Cp .= ForwardDiff.partials.(C, p)
         end
@@ -107,64 +128,9 @@ function LinearAlgebra.mul!(C::AbstractMatrix{Dual{T,V,N}},
 
     for idx in eachindex(C)
         partials_tuple = ntuple(p -> C_parts[p][idx], N)
-        C[idx] = Dual{T,V,N}(C_val[idx], ForwardDiff.Partials{N,V}(partials_tuple))
+        C[idx] = _dual_reconstruct(E, C_val[idx], partials_tuple)
     end
     C
-end
-
-#TODO: Could we easily merge the Complex{Dual} case and standard Dual case with smart typing?
-function LinearAlgebra.mul!(C::AbstractMatrix{Complex{Dual{T,V,N}}},
-                            A::AbstractMatrix, B::AbstractMatrix,
-                            α::Number, β::Number) where {T,V,N}
-    A_val, A_parts = _dual_value_and_partials(A, N)
-    B_val, B_parts = _dual_value_and_partials(B, N)
-
-    C_val = similar(C, Complex{V})
-    if iszero(β)
-        fill!(C_val, zero(Complex{V}))
-    else
-        C_val .= ForwardDiff.value.(C)
-    end
-    mul!(C_val, A_val, B_val, α, β)
-
-    C_parts = ntuple(N) do p
-        Cp = similar(C, Complex{V})
-        if iszero(β)
-            fill!(Cp, zero(Complex{V}))
-        else
-            Cp .= ForwardDiff.partials.(C, p)
-        end
-        Ap = A_parts[p]
-        Bp = B_parts[p]
-        if isnothing(Ap) && isnothing(Bp)
-            # Cp already contains β*∂C_p
-        elseif isnothing(Ap)
-            mul!(Cp, A_val, Bp, α, β)
-        elseif isnothing(Bp)
-            mul!(Cp, Ap, B_val, α, β)
-        else
-            mul!(Cp, Ap, B_val, α, β)
-            mul!(Cp, A_val, Bp, α, true)
-        end
-        Cp
-    end
-
-    for idx in eachindex(C)
-        cval = C_val[idx]
-        cpart = ntuple(p -> C_parts[p][idx], N)
-        C[idx] = Complex(Dual{T,V,N}(real(cval), ForwardDiff.Partials{N,V}(ntuple(p -> real(cpart[p]), N))),
-                         Dual{T,V,N}(imag(cval), ForwardDiff.Partials{N,V}(ntuple(p -> imag(cpart[p]), N))))
-    end
-    C
-end
-
-function LinearAlgebra.mul!(C::AbstractMatrix{Dual{T,V,N}},
-                            A::AbstractMatrix, B::AbstractMatrix) where {T,V,N}
-    LinearAlgebra.mul!(C, A, B, true, false)
-end
-function LinearAlgebra.mul!(C::AbstractMatrix{Complex{Dual{T,V,N}}},
-                            A::AbstractMatrix, B::AbstractMatrix) where {T,V,N}
-    LinearAlgebra.mul!(C, A, B, true, false)
 end
 
 #TODO: add Base.:* overloads to make it explicit
