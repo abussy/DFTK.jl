@@ -59,21 +59,32 @@ end
 # We extract the value and each partial into plain arrays, call ordinary
 # (BLAS-backed) matmul on those, and rebuild the Dual result.
 
+# Only safe when all operands carry the *same* Dual tag/order. Mixed tags
+# occur in nested ForwardDiff contexts (e.g. elastic_tensor) and must fall
+# back to generic multiplication. Note: ForwardDiff.Dual <: Real, so using
+# Real/Complex{<:Real} here would incorrectly match Dual numbers.
+const _IsDual{T,V,N} = Union{Dual{T,V,N}, Complex{Dual{T,V,N}}}
+
+# Scalar types that are *not* Dual numbers. We use this to dispatch mixed dual/plain
+# matrix products to the BLAS-accelerated path. (Using Real/Complex{<:Real} is unsafe
+# because ForwardDiff.Dual <: Real.)
+const _IsPlainScalar = Union{AbstractFloat, Complex{<:AbstractFloat}}
+
 # Performance workaround for GEMM of matrices with Dual/Complex{Dual} element types, ensuring
 # that the matrix multiplication is dispatched to BLAS instead of the generic Julia implementation.
-function dual_matrix_value_and_partials(A::AbstractMatrix{<:Union{Dual, Complex{<:Dual}}}, N::Int)
-    (ForwardDiff.value.(A), ntuple(p -> ForwardDiff.partials.(A, p), N))
+function dual_matrix_value_and_partials(A::AbstractMatrix{<:_IsDual{T,V,N}}, npartials::Int) where {T,V,N}
+    (ForwardDiff.value.(A), ntuple(p -> ForwardDiff.partials.(A, p), npartials))
 end
-function dual_matrix_value_and_partials(A::AbstractMatrix, N::Int)
-    (A, ntuple(_ -> nothing, N))
+function dual_matrix_value_and_partials(A::AbstractMatrix, npartials::Int)
+    (A, ntuple(_ -> nothing, npartials))
 end
 
-# Overload of 5-argument mul! resulting in a matrix of Dual/Complex{Dual}. Values of C are the
-# product of the values of A and B. Partials of C are the cross product of values and partials
-# of A and B. This break down results in GEMM of matrices of BlasFloat.
-function LinearAlgebra.mul!(C::AbstractMatrix{S}, A::AbstractMatrix, B::AbstractMatrix,
-                            α::Number, β::Number) where {T,V,N,
-                            S<:Union{Dual{T,V,N}, Complex{Dual{T,V,N}}}}
+# Core implementation of 5-argument mul! for Dual-valued matrices. The operands A and B may
+# either both be Dual matrices (same tag/order) or one of them may be a plain (non-Dual) matrix.
+# Mixed-tag Dual matrices must *not* reach this routine; they are excluded by the type signatures
+# above and will fall back to generic multiplication.
+function _dual_mul!(C::AbstractMatrix{<:_IsDual{T,V,N}}, A, B, α::Number, β::Number) where {T,V,N}
+    S = eltype(C)
     A_val, A_parts = dual_matrix_value_and_partials(A, N)
     B_val, B_parts = dual_matrix_value_and_partials(B, N)
 
@@ -125,26 +136,44 @@ function LinearAlgebra.mul!(C::AbstractMatrix{S}, A::AbstractMatrix, B::Abstract
     C
 end
 
-# Explicit 3-argument mul! and Base.:* overloads calling the above
-function LinearAlgebra.mul!(C::AbstractMatrix{S}, A::AbstractMatrix, B::AbstractMatrix) where {T,V,N,
-                            S<:Union{Dual{T,V,N}, Complex{Dual{T,V,N}}}}
-    mul!(C, A, B, true, false)
+# Overload of 5-argument mul! resulting in a matrix of Dual/Complex{Dual}. Values of C are the
+# product of the values of A and B. Partials of C are the cross product of values and partials
+# of A and B. This break down results in GEMM of matrices of BlasFloat.
+function LinearAlgebra.mul!(C::AbstractMatrix{<:_IsDual{T,V,N}},
+                            A::AbstractMatrix{<:_IsDual{T,V,N}},
+                            B::AbstractMatrix{<:_IsDual{T,V,N}},
+                            α::Number, β::Number) where {T,V,N}
+    _dual_mul!(C, A, B, α, β)
 end
 
-function Base.:*(A::AbstractMatrix{<:Union{Dual, Complex{<:Dual}}}, B::AbstractMatrix)
+# Same-tag Dual × plain matrix.
+function LinearAlgebra.mul!(C::AbstractMatrix{<:_IsDual{T,V,N}},
+                            A::AbstractMatrix{<:_IsDual{T,V,N}},
+                            B::AbstractMatrix{<:_IsPlainScalar},
+                            α::Number, β::Number) where {T,V,N}
+    _dual_mul!(C, A, B, α, β)
+end
+
+# Plain matrix × same-tag Dual.
+function LinearAlgebra.mul!(C::AbstractMatrix{<:_IsDual{T,V,N}},
+                            A::AbstractMatrix{<:_IsPlainScalar},
+                            B::AbstractMatrix{<:_IsDual{T,V,N}},
+                            α::Number, β::Number) where {T,V,N}
+    _dual_mul!(C, A, B, α, β)
+end
+
+# Explicit Base.:* overloads restricted to safe same-tag combinations. Mixed-tag nested-AD
+# cases fall back to generic multiplication.
+function Base.:*(A::AbstractMatrix{<:_IsDual{T,V,N}},
+                 B::AbstractMatrix{<:Union{_IsDual{T,V,N}, _IsPlainScalar}}) where {T,V,N}
     S = promote_type(eltype(A), eltype(B))
-    C = similar(A, S, size(A,1), size(B,2))
+    C = similar(A, S, size(A, 1), size(B, 2))
     mul!(C, A, B)
 end
-function Base.:*(A::AbstractMatrix, B::AbstractMatrix{<:Union{Dual, Complex{<:Dual}}})
+function Base.:*(A::AbstractMatrix{<:_IsPlainScalar},
+                 B::AbstractMatrix{<:_IsDual{T,V,N}}) where {T,V,N}
     S = promote_type(eltype(A), eltype(B))
-    C = similar(A, S, size(A,1), size(B,2))
-    mul!(C, A, B)
-end
-function Base.:*(A::AbstractMatrix{<:Union{Dual, Complex{<:Dual}}},
-                 B::AbstractMatrix{<:Union{Dual, Complex{<:Dual}}})
-    S = promote_type(eltype(A), eltype(B))
-    C = similar(A, S, size(A,1), size(B,2))
+    C = similar(B, S, size(A, 1), size(B, 2))
     mul!(C, A, B)
 end
 
