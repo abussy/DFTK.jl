@@ -251,7 +251,6 @@ export refine_forces
 include("postprocess/refine.jl")
 
 # Workarounds
-include("workarounds/dummy_inplace_fft.jl")
 include("workarounds/forwarddiff_rules.jl")
 
 # Optimized generic GPU functions and GPU workarounds

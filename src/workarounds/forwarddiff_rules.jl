@@ -27,6 +27,12 @@ for plan in [:plan_fft, :plan_ifft, :plan_bfft]
             AbstractFFTs.$plan(ForwardDiff.value.(x), region; kwargs...)
     end
 end
+for plan in [:plan_fft!, :plan_ifft!, :plan_bfft!]
+    @eval begin
+        AbstractFFTs.$plan(x::AbstractArray{<:Complex{<:Dual}}, region=1:ndims(x); kwargs...) =
+            AbstractFFTs.$plan(ForwardDiff.value.(x), region; kwargs...)
+    end
+end
 
 function LinearAlgebra.mul!(y::AbstractArray{<:Union{Complex{<:Dual}}},
                             p::AbstractFFTs.Plan,
@@ -55,8 +61,8 @@ end
 function build_fft_plans!(tmp::AbstractArray{Complex{T}}) where {T<:Dual}
     opFFT  = AbstractFFTs.plan_fft(tmp)
     opBFFT = AbstractFFTs.plan_bfft(tmp)
-    ipFFT  = DummyInplace(opFFT)
-    ipBFFT = DummyInplace(opBFFT)
+    ipFFT  = AbstractFFTs.plan_fft!(tmp)
+    ipBFFT = AbstractFFTs.plan_bfft!(tmp)
     ipFFT, opFFT, ipBFFT, opBFFT
 end
 
